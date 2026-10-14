@@ -1,0 +1,6 @@
+# Build output
+build/
+dist/
+build-resources/icon.iconset/
+
+.DS_Store

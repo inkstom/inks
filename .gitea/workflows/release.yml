@@ -1,0 +1,28 @@
+# Pushing a tag like v1.0.0 builds inks.app, wraps it in a disk image and
+# publishes a Gitea release with the image attached. The release notes come
+# from that version's section of CHANGELOG.md.
+name: Release
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  release:
+    runs-on: macos
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Check the tag matches VERSION
+        run: test "${{ github.ref_name }}" = "v$(cat VERSION)"
+      - name: Test and build the disk image
+        run: make release
+      - name: Publish the release
+        env:
+          GITEA_URL: ${{ github.server_url }}
+          GITEA_REPO: ${{ github.repository }}
+          # The automatic token works when it may write releases; otherwise
+          # add a personal access token as the RELEASE_TOKEN secret.
+          GITEA_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.GITEA_TOKEN }}
+        run: sh scripts/gitea-release.sh "${{ github.ref_name }}" dist/*.dmg

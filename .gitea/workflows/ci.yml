@@ -1,0 +1,28 @@
+# Runs on every push and pull request. Needs a macOS act_runner registered
+# with the label "macos" (see README › Continuous integration).
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: macos
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Formatting
+        run: test -z "$(gofmt -l cmd internal)" || { gofmt -l cmd internal; exit 1; }
+      - name: Vet and unit tests
+        run: make test
+      - name: Build the app
+        run: make app
+      # The self-test opens a window, so the runner must run inside a
+      # logged-in user session. Set the repository variable INKS_GUI_TESTS
+      # to "true" to enable it.
+      - name: End-to-end self-test
+        if: vars.INKS_GUI_TESTS == 'true'
+        run: make selftest

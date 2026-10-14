@@ -1,0 +1,175 @@
+package ui
+
+import (
+	"testing"
+
+	"gioui.org/app"
+
+	"gioui.org/io/key"
+
+	"inks/internal/buffer"
+	"inks/internal/editor"
+	"inks/internal/macmenu"
+)
+
+func TestTrimPreview(t *testing.T) {
+	line := "    resource \"aws_s3_bucket\" \"logs\" {"
+	p, from, to := trimPreview(line, 14, 27)
+	if p[from:to] != "aws_s3_bucket" || p[0] != 'r' {
+		t.Fatalf("got %q [%d:%d]", p, from, to)
+	}
+	long := "x := aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa needle tail"
+	i := len(long) - len("needle tail")
+	p, from, to = trimPreview(long, i, i+6)
+	if p[from:to] != "needle" || p[:len("…")] != "…" {
+		t.Fatalf("long: %q [%d:%d]", p, from, to)
+	}
+}
+
+func TestDiffEdit(t *testing.T) {
+	for _, c := range []struct{ cur, next string }{
+		{"hello world", "hello brave world"},
+		{"a\nb\nc", "a\nc"},
+		{"héllo", "hállo"},
+		{"same", "same"},
+		{"", "new"},
+	} {
+		b := buffer.New(c.cur)
+		e, ok := diffEdit(b, c.cur, c.next)
+		if !ok {
+			if c.cur != c.next {
+				t.Fatalf("%q→%q: no edit", c.cur, c.next)
+			}
+			continue
+		}
+		b.Apply([]buffer.Edit{e}, nil, buffer.ApplyOptions{})
+		if got := b.Text("\n"); got != c.next {
+			t.Fatalf("%q→%q: got %q", c.cur, c.next, got)
+		}
+	}
+}
+
+func TestMenuKey(t *testing.T) {
+	for _, c := range []struct {
+		in   string
+		key  string
+		mods int
+	}{
+		{"super+shift+f", "f", macmenu.Command | macmenu.Shift},
+		{"f4", string(rune(0xF707)), 0},
+		{"shift+f4", string(rune(0xF707)), macmenu.Shift},
+		{"super+equals", "=", macmenu.Command},
+		{"super+backspace", "\b", macmenu.Command},
+		{"escape", "", 0},  // would steal Escape from the editor
+		{"shift+a", "", 0}, // plain typing
+		{"super+k", "k", macmenu.Command},
+	} {
+		k, m := menuKey(c.in)
+		if k != c.key || m != c.mods {
+			t.Errorf("%s: got %q %x, want %q %x", c.in, k, m, c.key, c.mods)
+		}
+	}
+}
+
+func TestWrapLine(t *testing.T) {
+	line := "the quick brown fox jumps over the lazy dog"
+	br := wrapLine(line, 10, 4)
+	prev := 0
+	for _, b := range append(br, len(line)) {
+		seg := line[prev:b]
+		if len(seg) > 10 {
+			t.Fatalf("segment too wide: %q (%v)", seg, br)
+		}
+		prev = b
+	}
+	if len(br) == 0 || line[br[0]-1] != ' ' {
+		t.Fatalf("should break after spaces: %v", br)
+	}
+	// No spaces: hard breaks.
+	if br := wrapLine("abcdefghijklmnopqrstuvwxyz", 10, 4); len(br) != 2 || br[0] != 10 {
+		t.Fatalf("hard breaks: %v", br)
+	}
+}
+
+func TestRowLayout(t *testing.T) {
+	d := &Doc{}
+	d.M = editorModel("short\nthe quick brown fox jumps over the lazy dog\nend")
+	rl := d.layoutRows(20, 4, true)
+	if rl.total() != 5 {
+		t.Fatalf("rows: %d (%v)", rl.total(), rl.segs)
+	}
+	if l, k := rl.lineOfRow(3); l != 1 || k != 2 {
+		t.Fatalf("lineOfRow(3) = %d,%d", l, k)
+	}
+	if l, _ := rl.lineOfRow(4); l != 2 {
+		t.Fatalf("lineOfRow(4) = %d", l)
+	}
+	row, from := rl.rowOf(buffer.Pos{Line: 1, Col: 25})
+	if row != 2 || from == 0 {
+		t.Fatalf("rowOf: %d %d", row, from)
+	}
+	// Down from line 0 lands on the first row of line 1, then its second row.
+	p := rl.moveRows(d.M.Buf, buffer.Pos{Line: 0, Col: 2}, 2, 1, 4)
+	p = rl.moveRows(d.M.Buf, p, 2, 1, 4)
+	if r, _ := rl.rowOf(p); p.Line != 1 || r != 2 {
+		t.Fatalf("moveRows: %+v row %d", p, r)
+	}
+	// Without wrap, rows are lines.
+	if rl := d.layoutRows(0, 4, false); rl.total() != 3 {
+		t.Fatalf("no-wrap rows: %d", rl.total())
+	}
+}
+
+func editorModel(text string) *editor.Model { return editor.NewModel(buffer.New(text)) }
+
+func TestIMEEdit(t *testing.T) {
+	a := &App{}
+	d := &Doc{M: editorModel("cafe\nx")}
+	m := d.M
+	m.SetSels([]buffer.Range{buffer.Cursor(buffer.Pos{Line: 0, Col: 3})}, 0)
+	// Dead key: the accent is inserted as marked text, then replaced.
+	head := imeCoord(m.Buf, m.MainSel().Head)
+	a.imeEdit(d, key.EditEvent{Range: key.Range{Start: head, End: head}, Text: "´"})
+	if got := m.Buf.Line(0); got != "caf´e" {
+		t.Fatalf("marked: %q", got)
+	}
+	d.composing = true
+	h2 := imeCoord(m.Buf, m.MainSel().Head)
+	a.imeEdit(d, key.EditEvent{Range: key.Range{Start: h2 - 1, End: h2}, Text: "é"})
+	d.composing = false
+	if got := m.Buf.Line(0); got != "café"+"e" {
+		t.Fatalf("composed: %q", got)
+	}
+	// Plain typing with a stale range still inserts at the caret.
+	a.imeEdit(d, key.EditEvent{Range: key.Range{Start: 2, End: 2}, Text: "!"})
+	if got := m.Buf.Line(0); got != "café!e" {
+		t.Fatalf("plain: %q", got)
+	}
+	if p := imePos(m.Buf, imeCoord(m.Buf, buffer.Pos{Line: 0, Col: 5})); p.Col != 5 {
+		t.Fatalf("coord round trip: %+v", p)
+	}
+}
+
+func TestSnippetInsert(t *testing.T) {
+	a := &App{win: new(app.Window)}
+	a.complete = newCompleter(a)
+	d := &Doc{M: editorModel("    fn\n    fn"), Lang: "Go"}
+	d.M.TabSize = 4
+	d.M.SetSels([]buffer.Range{buffer.Cursor(buffer.Pos{Line: 0, Col: 6}), buffer.Cursor(buffer.Pos{Line: 1, Col: 6})}, 1)
+	a.insertSnippet(d, "func ${1:name}() {\n\t$0\n}", "fn")
+	want := "    func name() {\n    \t\n    }"
+	if got := d.M.Buf.Text("\n"); got != want+"\n"+want {
+		t.Fatalf("snippet text:\n%s", got)
+	}
+	for i, r := range d.M.Sels {
+		if d.M.Buf.Slice(r.Start(), r.End()) != "name" {
+			t.Fatalf("caret %d selects %q", i, d.M.Buf.Slice(r.Start(), r.End()))
+		}
+	}
+	sn, ok := parseSnippet([]byte(`<snippet><content><![CDATA[for ${1:i} := 0; $1 < ${2:n}; $1++ {
+	$0
+}]]></content><tabTrigger>fori</tabTrigger><scope>source.go</scope></snippet>`))
+	if !ok || sn.trigger != "fori" || !scopeMatches(sn.scope, "Go") || scopeMatches(sn.scope, "Python") {
+		t.Fatalf("parse snippet: %+v", sn)
+	}
+}

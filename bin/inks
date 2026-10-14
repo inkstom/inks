@@ -1,0 +1,15 @@
+#!/bin/sh
+# Command line launcher: `inks [files or folders…]`.
+# Opens the paths in the running inks (or starts it). Link it onto your PATH:
+#   ln -s "$PWD/bin/inks" /usr/local/bin/inks
+for app in /Applications/inks.app "$HOME/Applications/inks.app" "$(cd "$(dirname "$0")/.." && pwd)/build/inks.app"; do
+  [ -d "$app" ] && break
+done
+[ -d "$app" ] || { echo "inks.app not found — install it or run make app" >&2; exit 1; }
+case "$1" in
+  -v|--version|-h|--help) exec "$app/Contents/MacOS/inks" "$1" ;;
+esac
+if [ $# -eq 0 ]; then
+  exec open -a "$app"
+fi
+exec open -a "$app" "$@"
