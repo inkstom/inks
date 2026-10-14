@@ -58,6 +58,24 @@ make dmg        # dist/inks_<version>_<arch>.dmg
 | ⌃\` | Console |
 | ⎋ | Close the current panel or collapse cursors |
 
+More of the classic macOS bindings:
+
+| Keys | Does |
+| --- | --- |
+| F12 or ⌥⌘↓ / ⇧⌘R | Goto definition / goto symbol in project |
+| ⌘; / ⌃⌘P | Goto word in file / switch to a recent folder |
+| ⌃M / ⇧⌘M / ⇧⌘J / ⇧⌘Space | Jump to matching bracket / select inside brackets (again: include them) / select by indentation / expand selection |
+| ⇧⌘V / ⌘K ⌘V | Paste and indent / paste from history |
+| ⌥⌘/ | Toggle block comment |
+| ⌃T | Transpose characters or selections |
+| ⌘K ⌘Space, ⌘K ⌘A, ⌘K ⌘X | Set mark, select to mark, swap with mark |
+| ⌥⌘Q | Hard-wrap the paragraph at the first ruler (or 80) |
+| ⌥⌘G / ⌥⌘E / ⇧⌘E | Find the word under the caret / replace next / use selection for replace |
+| ⌘K ⌘C / ⌃⌥↑ ⌃⌥↓ | Center the caret / scroll a line |
+| ⌥⌘↑ | Switch between header and source (or a test file) |
+| ⌥⌘4 / ⌥⇧⌘3 | Four columns / three rows |
+| ⌃⇧⌘F | Distraction-free mode |
+
 Every command is also in the menu bar and the Command Palette. Hover a button for a description.
 
 ## Windows and tabs
@@ -67,6 +85,10 @@ Every command is also in the menu bar and the Command Palette. Hover a button fo
 - **Right-click a tab** for Close, Close Others, Close Tabs to the Right, Close All, **Open in New Window**, Split Right or Move to Next Group, Move to another window, Copy Path, Copy Relative Path and Reveal in Finder.
 - Opening a file that's already open in another window switches to it there instead of opening a second copy.
 - Closing a window (⇧⌘W or its close button) asks about unsaved files first. Quitting keeps everything, every window included, for next time.
+
+## Unsaved work
+
+You never have to save a note to keep it. inks records every window, tab and unsaved change within about three seconds of typing, so a crash, a forced quit or a restart loses at most the last few seconds. Each launch also keeps the previous session as `Local/Session.previous.json` in the inks data folder, as a backup. Open and Save dialogs start in the folder you last used.
 
 ## Find and replace
 

@@ -97,9 +97,12 @@ type App struct {
 	inFrame bool            // a frame is being processed (gtx is live)
 	cmdQ    []input.Command // Gio commands issued between frames
 
-	hovered  map[event.Tag]bool // areas under the pointer (see hit)
-	popup    *popup
-	complete *Completer
+	hovered map[event.Tag]bool // areas under the pointer (see hit)
+
+	pasteIndent     bool // the pending paste is Paste and Indent
+	distractionFree bool
+	popup           *popup
+	complete        *Completer
 
 	// Tab dragging (see tabs.go).
 	drag         *tabDrag
@@ -412,7 +415,7 @@ func (a *App) drawUI(gtx layout.Context) {
 		layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
 			return layout.Flex{Axis: layout.Horizontal}.Layout(gtx,
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					if !a.sidebarVisible() {
+					if !a.sidebarVisible() || a.distractionFree {
 						return layout.Dimensions{}
 					}
 					return a.layoutSidebar(gtx)
@@ -437,7 +440,12 @@ func (a *App) drawUI(gtx layout.Context) {
 			}
 			return layout.Dimensions{}
 		}),
-		layout.Rigid(a.layoutStatus),
+		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			if a.distractionFree {
+				return layout.Dimensions{}
+			}
+			return a.layoutStatus(gtx)
+		}),
 	)
 	if a.quick.visible {
 		a.quick.Layout(gtx)
@@ -691,13 +699,15 @@ func (a *App) save(d *Doc, then func()) {
 func (a *App) saveAs(d *Doc, then func()) {
 	def := d.Path
 	if def == "" {
+		// Start where the last file was saved (or opened); a project folder
+		// or home only the first time.
 		dir := ""
 		if len(a.folders) > 0 {
 			dir = a.folders[0]
 		} else if home, err := os.UserHomeDir(); err == nil {
 			dir = home
 		}
-		def = filepath.Join(dir, sanitizeName(d.Title()))
+		def = filepath.Join(a.dialogDir(dir), sanitizeName(d.Title()))
 	}
 	go func() {
 		p := platform.SaveFile("Save As", def)
@@ -705,6 +715,7 @@ func (a *App) saveAs(d *Doc, then func()) {
 			return
 		}
 		a.Do(func() {
+			a.lastDir = filepath.Dir(p)
 			d.Path = p
 			d.Name = ""
 			d.gitBaseAt = time.Time{}

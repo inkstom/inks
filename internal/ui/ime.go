@@ -40,7 +40,10 @@ func (a *App) updateIME(gtx layout.Context, d *Doc) {
 	m := d.M
 	r := m.MainSel()
 	sel := key.Range{Start: imeCoord(m.Buf, r.Anchor), End: imeCoord(m.Buf, r.Head)}
-	state := fmt.Sprint(m.Buf.Version(), sel, d.caretPx, a.editorTag)
+	// Resend after focus changes too: commands sent while the editor isn't
+	// focused are dropped, which would leave the input method's idea of the
+	// caret stale.
+	state := fmt.Sprint(m.Buf.Version(), sel, d.caretPx, a.editorTag, gtx.Focused(a.editorTag))
 	if state == d.imeState {
 		return
 	}
@@ -74,6 +77,10 @@ func (a *App) imeEdit(d *Doc, e key.EditEvent) {
 		if e.Text != "" || !r.Empty() {
 			m.Insert(e.Text)
 		}
+		if rng != sel {
+			// The input method had a stale caret: resync it next frame.
+			d.imeState = ""
+		}
 		return
 	}
 	// An input method replacing text near the caret (marked text): apply the
@@ -103,6 +110,12 @@ func (a *App) imeEdit(d *Doc, e key.EditEvent) {
 
 // imeSelect handles an input method moving the selection.
 func (a *App) imeSelect(d *Doc, r key.Range) {
+	// Only an input method that is composing moves the selection; after
+	// plain typing this event just echoes the platform's own guess, which
+	// can be wrong (e.g. right after a document is restored).
+	if !d.composing {
+		return
+	}
 	b := d.M.Buf
 	d.M.SetSels([]buffer.Range{{Anchor: imePos(b, r.Start), Head: imePos(b, r.End), Goal: -1}}, 0)
 }

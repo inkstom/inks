@@ -2,9 +2,13 @@ package ui
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"gioui.org/app"
@@ -40,6 +44,10 @@ type Shared struct {
 	pkgPalette []PaletteEntry
 	snippets   []snippet
 	resources  bool // package resources loaded
+
+	pasteHistory []string // recent copies (Paste from History)
+	lastDir      string   // the folder last used in an Open or Save dialog
+	savedSig     string   // what the session file last captured (see loop)
 
 	// Last copy, so a multi-caret paste can distribute the pieces.
 	clipboardText  string
@@ -81,7 +89,7 @@ func (s *Shared) Start(open []string) *App {
 	defer s.mu.Unlock()
 	var first *App
 	if sess := loadSession(); sess != nil {
-		s.recent, s.recentFolders = sess.Recent, sess.RecentFolders
+		s.recent, s.recentFolders, s.lastDir = sess.Recent, sess.RecentFolders, sess.LastDir
 		for i := range sess.Windows {
 			ws := sess.Windows[i]
 			a := s.NewWindow(func(a *App) { a.restoreFrom(&ws) })
@@ -97,6 +105,7 @@ func (s *Shared) Start(open []string) *App {
 		first.openAny(p)
 	}
 	macmenu.OnTerminate(s.onTerminate)
+	s.saveOnSignals()
 	macmenu.AcceptFirstMouse()
 	macmenu.OnReopen(func() {
 		s.Do(func() {
@@ -257,7 +266,9 @@ func (s *Shared) loop() {
 		n++
 		s.Do(func() {
 			s.py.checkPlugins()
-			if n%10 == 0 {
+			// Save soon after any change, so a crash or power loss costs at
+			// most a few seconds of typing.
+			if sig := s.sessionSig(); sig != s.savedSig || n%20 == 0 {
 				s.saveSession()
 			}
 			if s.menuStale {
@@ -315,6 +326,7 @@ type appSession struct {
 	Windows       []session `json:"windows"`
 	Recent        []string  `json:"recent,omitempty"`
 	RecentFolders []string  `json:"recentFolders,omitempty"`
+	LastDir       string    `json:"lastDir,omitempty"`
 }
 
 func sessionPath() string {
@@ -357,13 +369,64 @@ func (s *Shared) saveSession() {
 			_ = os.WriteFile(filepath.Join(filepath.Dir(sessionPath()), "Session.previous.json"), old, 0o600)
 		}
 	}
-	as := appSession{Version: 3, Recent: s.recent, RecentFolders: s.recentFolders}
+	as := appSession{Version: 3, Recent: s.recent, RecentFolders: s.recentFolders, LastDir: s.lastDir}
 	for _, w := range s.windows {
 		as.Windows = append(as.Windows, w.sessionState())
 	}
 	data, _ := json.Marshal(as)
 	_ = os.MkdirAll(filepath.Dir(sessionPath()), 0o755)
-	_ = os.WriteFile(sessionPath(), data, 0o644)
+	// Write a temporary file and rename it over the old one, so a crash
+	// mid-write never leaves a truncated session.
+	tmp := sessionPath() + ".tmp"
+	if os.WriteFile(tmp, data, 0o600) == nil {
+		_ = os.Rename(tmp, sessionPath())
+	}
+	s.savedSig = s.sessionSig()
+}
+
+// sessionSig changes whenever something the session records changes.
+func (s *Shared) sessionSig() string {
+	var sb strings.Builder
+	for _, w := range s.windows {
+		fmt.Fprintf(&sb, "w%d:%d:%v;", w.id, len(w.folders), w.layoutName)
+		for _, d := range w.allDocs() {
+			h := d.M.MainSel().Head
+			fmt.Fprintf(&sb, "%d:%d:%s:%d,%d;", d.ID, d.M.Buf.Version(), d.Path, h.Line, h.Col)
+		}
+	}
+	return sb.String()
+}
+
+// saveOnSignals saves the session when the process is told to stop
+// (kill, logout, a terminal closing) instead of dying with unsaved work.
+func (s *Shared) saveOnSignals() {
+	ch := make(chan os.Signal, 1)
+	signal.Notify(ch, syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP)
+	go func() {
+		<-ch
+		if s.mu.TryLock() {
+			s.saveSession()
+			s.mu.Unlock()
+		} else {
+			// A frame is running; give it a moment.
+			time.Sleep(200 * time.Millisecond)
+			s.mu.Lock()
+			s.saveSession()
+			s.mu.Unlock()
+		}
+		os.Exit(0)
+	}()
+}
+
+// dialogDir is where Open and Save dialogs start: the last folder used,
+// else the given fallback.
+func (s *Shared) dialogDir(fallback string) string {
+	if s.lastDir != "" {
+		if st, err := os.Stat(s.lastDir); err == nil && st.IsDir() {
+			return s.lastDir
+		}
+	}
+	return fallback
 }
 
 // noteRecentFolder records a folder for File › Open Recent.

@@ -3,6 +3,7 @@ package ui
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"gioui.org/app"
@@ -201,5 +202,48 @@ func TestSessionMigration(t *testing.T) {
 	if s == nil || s.Version != 3 || len(s.Windows) != 0 || s.RecentFolders[0] != "/f" {
 		// "/f", not "/changed": saving stops once quitting.
 		t.Fatalf("v3 session: %+v", s)
+	}
+}
+
+func TestDefaultBindingsUnique(t *testing.T) {
+	seen := map[string]string{}
+	for _, b := range DefaultBindings {
+		var keys []string
+		for _, k := range b.Keys {
+			keys = append(keys, normalizeKey(k))
+		}
+		k := strings.Join(keys, " ")
+		if prev, ok := seen[k]; ok {
+			t.Errorf("%s is bound to both %s and %s", k, prev, b.Command)
+		}
+		seen[k] = b.Command
+	}
+}
+
+func TestClassicHelpers(t *testing.T) {
+	text := "f(a, [b, c]) { x }"
+	if m, ok := matchBracket(text, 1); !ok || text[m] != ')' {
+		t.Fatalf("matchBracket: %d %v", m, ok)
+	}
+	if s, e, ok := enclosing(text, 7, 7); !ok || text[s] != '[' || text[e] != ']' {
+		t.Fatalf("enclosing: %d %d %v", s, e, ok)
+	}
+	if got := reindent("if x {\n\t\ty()\n\t}", "    "); got != "if x {\n    \ty()\n    }" {
+		t.Fatalf("reindent: %q", got)
+	}
+	d := &Doc{M: editorModel("// one two three four five six seven eight nine ten")}
+	d.M.TabSize = 4
+	d.wrapParagraphs(20)
+	for i := 0; i < d.M.Buf.LineCount(); i++ {
+		l := d.M.Buf.Line(i)
+		if len(l) > 20 || !strings.HasPrefix(l, "// ") {
+			t.Fatalf("wrap line %d: %q", i, l)
+		}
+	}
+	d = &Doc{M: editorModel("abc")}
+	d.M.SetSels([]buffer.Range{buffer.Cursor(buffer.Pos{Col: 1})}, 0)
+	d.transpose()
+	if got := d.M.Buf.Line(0); got != "bac" {
+		t.Fatalf("transpose: %q", got)
 	}
 }

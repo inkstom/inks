@@ -63,6 +63,9 @@ func (d *Doc) trackEdits() {
 		for i := range d.bookmarks {
 			d.bookmarks[i] = buffer.MapPos(d.bookmarks[i], e, newEnd, -1)
 		}
+		for i := range d.marks {
+			d.marks[i] = buffer.MapPos(d.marks[i], e, newEnd, -1)
+		}
 		for _, list := range d.phantoms {
 			for i := range list {
 				list[i].pos = buffer.MapPos(list[i].pos, e, newEnd, -1)

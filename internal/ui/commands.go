@@ -107,9 +107,16 @@ func (a *App) registerCommands() {
 	// File
 	reg("new_file", "File: New File", func(map[string]any) { a.py.event("on_new", a.newDoc("", ""), nil, nil) })
 	reg("prompt_open", "File: Open…", func(map[string]any) {
+		start := a.defaultDir()
+		if d := a.doc(); d == nil || d.Path == "" {
+			start = a.dialogDir(start)
+		}
 		go func() {
-			files := platform.OpenFiles("Open", a.defaultDir())
+			files := platform.OpenFiles("Open", start)
 			a.Do(func() {
+				if len(files) > 0 {
+					a.lastDir = filepath.Dir(files[0])
+				}
 				for _, f := range files {
 					a.openPath(f)
 				}
@@ -117,15 +124,17 @@ func (a *App) registerCommands() {
 		}()
 	})
 	reg("prompt_open_folder", "File: Open Folder…", func(map[string]any) {
+		start := a.dialogDir(a.defaultDir())
 		go func() {
-			if dir := platform.OpenFolder("Open Folder", a.defaultDir()); dir != "" {
+			if dir := platform.OpenFolder("Open Folder", start); dir != "" {
 				a.Do(func() { a.openFolder(dir) })
 			}
 		}()
 	})
 	reg("prompt_add_folder", "File: Add Folder to Workspace…", func(map[string]any) {
+		start := a.dialogDir(a.defaultDir())
 		go func() {
-			if dir := platform.OpenFolder("Add Folder to Workspace", a.defaultDir()); dir != "" {
+			if dir := platform.OpenFolder("Add Folder to Workspace", start); dir != "" {
 				a.Do(func() {
 					a.addFolder(dir)
 					a.showSidebar = true
@@ -415,7 +424,7 @@ func (a *App) registerCommands() {
 	// Layout
 	for _, l := range []struct{ name, caption string }{
 		{"single", "Layout: Single"}, {"columns_2", "Layout: Columns: 2"}, {"columns_3", "Layout: Columns: 3"},
-		{"rows_2", "Layout: Rows: 2"}, {"grid_4", "Layout: Grid: 4"},
+		{"columns_4", "Layout: Columns: 4"}, {"rows_2", "Layout: Rows: 2"}, {"rows_3", "Layout: Rows: 3"}, {"grid_4", "Layout: Grid: 4"},
 	} {
 		name := l.name
 		a.palette = append(a.palette, PaletteEntry{Caption: l.caption, Command: "set_layout", Args: map[string]any{"layout": name}})
@@ -431,6 +440,8 @@ func (a *App) registerCommands() {
 	}
 
 	a.registerPackageCommands(reg)
+	a.registerClassicCommands(reg, text)
+	tx("sort_lines_case_sensitive", "Text: Sort Lines (Case Sensitive)", func(t string) (string, error) { return texttools.SortLines(t, "case", false, 0, ""), nil })
 
 	// Folding, bookmarks, jumps, macros
 	text("fold", "Code Folding: Fold", func(d *Doc, _ map[string]any) {

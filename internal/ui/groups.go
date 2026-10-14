@@ -34,6 +34,8 @@ var layouts = map[string][][4]float32{
 	"columns_3": {{0, 0, 1. / 3, 1}, {1. / 3, 0, 2. / 3, 1}, {2. / 3, 0, 1, 1}},
 	"rows_2":    {{0, 0, 1, .5}, {0, .5, 1, 1}},
 	"grid_4":    {{0, 0, .5, .5}, {.5, 0, 1, .5}, {0, .5, .5, 1}, {.5, .5, 1, 1}},
+	"columns_4": {{0, 0, .25, 1}, {.25, 0, .5, 1}, {.5, 0, .75, 1}, {.75, 0, 1, 1}},
+	"rows_3":    {{0, 0, 1, 1. / 3}, {0, 1. / 3, 1, 2. / 3}, {0, 2. / 3, 1, 1}},
 }
 
 func (a *App) initGroups() {
@@ -204,7 +206,12 @@ func (a *App) layoutGroups(gtx layout.Context) layout.Dimensions {
 			gg := gtx
 			gg.Constraints = layout.Exact(r.Size())
 			layout.Flex{Axis: layout.Vertical}.Layout(gg,
-				layout.Rigid(a.layoutTabs),
+				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+					if a.distractionFree {
+						return layout.Dimensions{}
+					}
+					return a.layoutTabs(gtx)
+				}),
 				layout.Flexed(1, a.layoutEditorArea),
 			)
 			off.Pop()

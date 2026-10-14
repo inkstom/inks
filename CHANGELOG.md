@@ -7,6 +7,10 @@
 - Opening a file that's already open in another window switches to it there.
 - Closing a window asks about unsaved files. Quitting restores every window next time, and clicking the Dock icon with no windows open opens one.
 - The first click in an inactive window acts right away, so you can drag a tab or place the caret without activating the window first.
+- **Unsaved work survives crashes:** the session is saved within about three seconds of a change, written atomically, and saved on kill and logout signals. Each launch keeps the previous session as `Session.previous.json`.
+- **Open and Save dialogs** start in the folder you last used, remembered across launches.
+- **More classic key bindings:** goto definition (F12), goto symbol in project (⇧⌘R), goto word (⌘;), switch folder (⌃⌘P), bracket jump and selection (⌃M, ⇧⌘M), expand to indentation (⇧⌘J) and scope (⇧⌘Space), paste and indent (⇧⌘V), paste from history (⌘K ⌘V), block comments (⌥⌘/), transpose (⌃T), marks (⌘K ⌘Space/A/X), hard wrap (⌥⌘Q), find under caret (⌥⌘G), replace next (⌥⌘E), center caret (⌘K ⌘C), scroll lines (⌃⌥↑↓), header/source switch (⌥⌘↑), 4 columns and 3 rows, and distraction-free mode (⌃⇧⌘F).
+- Fixed: after a document was restored, the first keystroke could move the caret to the start of the line.
 
 ## 1.0.0 — 2026-10-13
 

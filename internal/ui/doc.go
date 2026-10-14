@@ -55,10 +55,12 @@ type Doc struct {
 	overrides map[string]any
 	revealAt  *buffer.Pos // reveal this position instead of the caret
 
-	folds     []fold
-	foldVer   int
-	bookmarks []buffer.Pos
-	foldMarks []foldMark
+	folds        []fold
+	foldVer      int
+	bookmarks    []buffer.Pos
+	marks        []buffer.Pos // set_mark positions
+	centerAlways bool         // the next reveal centers the caret
+	foldMarks    []foldMark
 
 	rows         *rowLayout
 	wrapOverride *bool

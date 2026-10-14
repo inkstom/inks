@@ -753,6 +753,13 @@ func (m *Model) ToggleComment() {
 	m.lineEdits("comment", edits)
 }
 
+// ToggleBlockComment wraps or unwraps the selections in block comments.
+func (m *Model) ToggleBlockComment() {
+	if m.BlockComment[0] != "" {
+		m.toggleBlockComment()
+	}
+}
+
 func (m *Model) toggleBlockComment() {
 	open, close := m.BlockComment[0], m.BlockComment[1]
 	m.edit("comment", false, func(r Range) (buffer.Edit, Range) {

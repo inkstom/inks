@@ -57,7 +57,7 @@ func (a *App) geom(gtx layout.Context, d *Doc) editorGeom {
 		lh = 1.45
 	}
 	g := editorGeom{met: met, lineH: int(math.Round(float64(px) * lh)), padL: gtx.Dp(8)}
-	if a.set.Bool("line_numbers") {
+	if a.set.Bool("line_numbers") && !a.distractionFree {
 		digits := len(strconv.Itoa(d.M.Buf.LineCount()))
 		if digits < 3 {
 			digits = 3
@@ -68,8 +68,12 @@ func (a *App) geom(gtx layout.Context, d *Doc) editorGeom {
 	if a.editorRect.Dx() > 0 && size.X == 0 {
 		size = a.editorRect.Size()
 	}
-	if a.set.Bool("draw_minimap") && size.X > gtx.Dp(500) {
+	if a.set.Bool("draw_minimap") && size.X > gtx.Dp(500) && !a.distractionFree {
 		g.miniW = gtx.Dp(100)
+	}
+	if a.distractionFree {
+		// Center a column of text about 100 characters wide.
+		g.padL = max(gtx.Dp(24), (size.X-int(100*met.Advance))/2)
 	}
 	g.rect = image.Rectangle{Max: size}
 	g.wrap = d.wordWrap(a)
@@ -159,7 +163,10 @@ func (a *App) layoutEditor(gtx layout.Context, d *Doc) layout.Dimensions {
 		}
 		row, segFrom := g.rows.rowOf(h)
 		top := float32(row * g.lineH)
-		if d.centerOnReveal && (top < d.scrollY || top+float32(g.lineH) > d.scrollY+float32(size.Y)) {
+		if d.centerAlways {
+			d.centerAlways = false
+			d.scrollY = top - float32(size.Y)/2 + float32(g.lineH)/2
+		} else if d.centerOnReveal && (top < d.scrollY || top+float32(g.lineH) > d.scrollY+float32(size.Y)) {
 			d.scrollY = top - float32(size.Y)/3
 		} else if top < d.scrollY {
 			d.scrollY = top
@@ -842,6 +849,7 @@ func (a *App) copySelection(d *Doc, cut bool) {
 	}
 	a.clipboardParts = parts
 	a.clipboardText = text
+	a.rememberCopy(text)
 	a.exec(clipboard.WriteCmd{Type: "application/text", Data: io.NopCloser(strings.NewReader(text))})
 	if cut {
 		if allEmpty {
@@ -857,6 +865,16 @@ func (a *App) copySelection(d *Doc, cut bool) {
 func (a *App) pasteText(d *Doc, text string) {
 	m := d.M
 	text = strings.ReplaceAll(text, "\r\n", "\n")
+	if a.pasteIndent {
+		// Paste and Indent: match the indentation of the line it lands on.
+		a.pasteIndent = false
+		line := m.Buf.Line(m.MainSel().Head.Line)
+		text = reindent(text, line[:len(line)-len(strings.TrimLeft(line, " \t"))])
+		m.Insert(text)
+		m.Buf.BreakUndoGroup()
+		a.afterEdit(d)
+		return
+	}
 	if text == a.clipboardText && len(a.clipboardParts) == len(m.Sels) && len(m.Sels) > 1 {
 		parts := a.clipboardParts
 		i := 0

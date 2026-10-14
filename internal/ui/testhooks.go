@@ -11,6 +11,7 @@ import (
 
 	"gioui.org/gpu/headless"
 	"gioui.org/io/key"
+	"gioui.org/io/system"
 	"gioui.org/layout"
 	"gioui.org/op"
 	"gioui.org/unit"
@@ -579,6 +580,9 @@ func SelfTest(dir string) *TestHooks {
 				return fmt.Errorf("new window: %d → %d windows", before, len(a.windows))
 			}
 			a.focused = a
+			// Keep this window in front: Gio stops drawing a covered window,
+			// and these steps run in its frames.
+			a.perform(system.ActionRaise)
 			return nil
 		},
 		func(a *App) error {
@@ -596,6 +600,7 @@ func SelfTest(dir string) *TestHooks {
 			if other == nil || other == a || other.doc() != d {
 				return fmt.Errorf("moved doc not active in the new window")
 			}
+			a.perform(system.ActionRaise)
 			count := len(a.allDocs())
 			got := a.openPath(p)
 			return expect(got == d && len(a.allDocs()) == count, "reopen should find the other window's tab (copies: %d→%d)", count, len(a.allDocs()))
@@ -613,6 +618,7 @@ func SelfTest(dir string) *TestHooks {
 			// Dropping it outside the window tears it off into a new window.
 			n := len(a.windows)
 			a.dropTab(&tabDrag{doc: y, group: a.focus, pos: image.Pt(-200, -200)})
+			a.perform(system.ActionRaise)
 			return expect(!a.isOpen(y) && len(a.windows) == n+1 && a.ownerOf(y) != nil, "tear off: %d windows", len(a.windows))
 		},
 		func(a *App) error {
@@ -627,9 +633,51 @@ func SelfTest(dir string) *TestHooks {
 		},
 		func(a *App) error {
 			if len(a.windows) > 1 {
+				a.perform(system.ActionRaise)
 				return errWait
 			}
 			return expect(a.windows[0] == a && a.active >= 0, "windows left: %d", len(a.windows))
+		},
+		func(a *App) error {
+			// Classic commands: brackets, marks, find under, layouts, distraction free.
+			d := a.newDoc("call(alpha, [beta, gamma])\nalpha again\n", "")
+			d.M.SetSels([]buffer.Range{buffer.Cursor(buffer.Pos{Col: 14})}, 0)
+			a.run("expand_selection_to_brackets", nil)
+			if r := d.M.MainSel(); d.M.Buf.Slice(r.Start(), r.End()) != "beta, gamma" {
+				return fmt.Errorf("expand to brackets: %q", d.M.Buf.Slice(r.Start(), r.End()))
+			}
+			a.run("expand_selection_to_brackets", nil)
+			if r := d.M.MainSel(); d.M.Buf.Slice(r.Start(), r.End()) != "[beta, gamma]" {
+				return fmt.Errorf("expand again: %q", d.M.Buf.Slice(r.Start(), r.End()))
+			}
+			d.M.SetSels([]buffer.Range{buffer.Cursor(buffer.Pos{Col: 4})}, 0)
+			a.run("move_to_brackets", nil)
+			if h := d.M.MainSel().Head; h.Col != 25 {
+				return fmt.Errorf("move to brackets: %+v", h)
+			}
+			d.M.SetSels([]buffer.Range{buffer.Cursor(buffer.Pos{Col: 5})}, 0)
+			a.run("set_mark", nil)
+			d.M.SetSels([]buffer.Range{buffer.Cursor(buffer.Pos{Col: 10})}, 0)
+			a.run("select_to_mark", nil)
+			if r := d.M.MainSel(); d.M.Buf.Slice(r.Start(), r.End()) != "alpha" {
+				return fmt.Errorf("select to mark: %q", d.M.Buf.Slice(r.Start(), r.End()))
+			}
+			a.run("find_under", nil)
+			if h := d.M.MainSel().Head; h.Line != 1 {
+				return fmt.Errorf("find under: %+v", h)
+			}
+			a.run("set_layout", map[string]any{"layout": "columns_4"})
+			four := len(a.groups) == 4
+			a.run("set_layout", map[string]any{"layout": "single"})
+			a.run("toggle_distraction_free", nil)
+			df := a.distractionFree
+			a.run("toggle_distraction_free", nil)
+			return expect(four && df && !a.distractionFree, "layouts %v / distraction free %v", four, df)
+		},
+		func(a *App) error {
+			// Open and Save dialogs start in the folder last used.
+			a.lastDir = dir
+			return expect(a.dialogDir("/elsewhere") == dir, "dialogDir: %q", a.dialogDir("/elsewhere"))
 		},
 		func(a *App) error {
 			// Menu shortcuts reflect key bindings.
