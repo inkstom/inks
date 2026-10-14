@@ -22,6 +22,7 @@ type Group struct {
 	tabCloseTags [64]tabCloseTag
 	miniTag      minimapTag
 	tabScroll    int
+	tabRects     []image.Rectangle // tab positions in the tab bar, last frame
 	tabClickIdx  int
 	tabClickAt   time.Time
 }
@@ -223,5 +224,6 @@ func (a *App) layoutGroups(gtx layout.Context) layout.Dimensions {
 	if clickFocus >= 0 {
 		a.setFocus(clickFocus)
 	}
+	a.finishTabActions()
 	return layout.Dimensions{Size: size}
 }

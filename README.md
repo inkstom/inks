@@ -44,6 +44,7 @@ make dmg        # dist/inks_<version>_<arch>.dmg
 | ⌘L / ⇧⌘D / ⌃⇧K | Select line / duplicate line / delete line |
 | ⌃⌘↑ ⌃⌘↓ | Move lines up / down |
 | ⌘/ | Toggle comment |
+| ⇧⌘N / ⇧⌘W | New window / close window (asks about unsaved files) |
 | ⌥⌘2 / ⌥⌘3 / ⌥⇧⌘2 / ⌥⌘5 / ⌥⌘1 | Two columns / three columns / two rows / grid / single layout |
 | ⌃1–4, ⌃⇧1–4 | Focus a group, move the file to a group |
 | ⌘K ⌘B | Toggle the side bar |
@@ -58,6 +59,14 @@ make dmg        # dist/inks_<version>_<arch>.dmg
 | ⎋ | Close the current panel or collapse cursors |
 
 Every command is also in the menu bar and the Command Palette. Hover a button for a description.
+
+## Windows and tabs
+
+- **File › New Window** (⇧⌘N) opens another window. **Open Folder…** uses the current window if it has no folder yet, and a new window otherwise. **Add Folder to Workspace…** adds to the current one, and **Duplicate Workspace** opens a new window with the same folders.
+- **Drag a tab** to reorder it, onto another split group to move it there, or **out of the window** to open it in a new window where you drop it.
+- **Right-click a tab** for Close, Close Others, Close Tabs to the Right, Close All, **Open in New Window**, Split Right or Move to Next Group, Move to another window, Copy Path, Copy Relative Path and Reveal in Finder.
+- Opening a file that's already open in another window switches to it there instead of opening a second copy.
+- Closing a window (⇧⌘W or its close button) asks about unsaved files first. Quitting keeps everything, every window included, for next time.
 
 ## Find and replace
 
@@ -188,7 +197,7 @@ internal/settings/    defaults and the user settings file
 
 ## Testing
 
-`make test` runs `go vet` and the unit tests. `make selftest` opens a window and drives the real app through 48 scripted checks: editing, search and replace, the menu bar, git, builds, layouts, folding, macros, plugins and more. It uses a throwaway profile and exits non-zero on failure.
+`make test` runs `go vet` and the unit tests. `make selftest` opens a window and drives the real app through 53 scripted checks: editing, search and replace, the menu bar, git, builds, layouts, folding, macros, plugins and more. It uses a throwaway profile and exits non-zero on failure.
 
 Useful environment variables:
 

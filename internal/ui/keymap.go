@@ -33,6 +33,8 @@ func b(keys string, cmd string, args ...any) Binding {
 // DefaultBindings are the built-in key bindings (macOS).
 var DefaultBindings = []Binding{
 	b("super+n", "new_file"),
+	b("super+shift+n", "new_window"),
+	b("super+shift+w", "close_window"),
 	b("super+o", "prompt_open"),
 	b("super+alt+o", "prompt_open_folder"),
 	b("super+shift+t", "reopen_last_file"),

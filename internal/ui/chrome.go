@@ -164,6 +164,8 @@ func (a *App) layoutTabs(gtx layout.Context) layout.Dimensions {
 		grp.tabScroll = activeL
 	}
 	grp.tabScroll = min(max(grp.tabScroll, 0), max(0, total-avail))
+	a.tabBarH = h
+	grp.tabRects = grp.tabRects[:0]
 	defer clip.Rect{Max: image.Pt(w, h)}.Push(gtx.Ops).Pop()
 	x := gtx.Dp(6) - grp.tabScroll
 	for i, d := range a.docs {
@@ -171,6 +173,7 @@ func (a *App) layoutTabs(gtx layout.Context) layout.Dimensions {
 		tw := a.fonts.Width(title, a.fonts.UI, px)
 		tabW := widths[i]
 		r := image.Rect(x, h-tabH, x+tabW, h)
+		grp.tabRects = append(grp.tabRects, r)
 		bg := c.Tab
 		fg := c.TabFg
 		if i == a.active {
@@ -196,10 +199,12 @@ func (a *App) layoutTabs(gtx layout.Context) layout.Dimensions {
 		} else if i == a.active {
 			a.fonts.Draw(gtx.Ops, "×", cx-gtx.Dp(4), cy+met.Ascent/2-gtx.Dp(1), fg, a.fonts.UI, px)
 		}
-		// Click areas.
-		area := clip.Rect(r).Push(gtx.Ops)
-		event.Op(gtx.Ops, &grp.tabTags[i%len(grp.tabTags)])
-		area.Pop()
+		if dr := a.drag; dr != nil && dr.moving && dr.doc == d {
+			// The tab being dragged.
+			stroke(gtx.Ops, r, gtx.Dp(6), 1, c.Accent)
+		}
+		// Click areas: the tab (click, drag, menus), then its close button.
+		a.tabPointer(gtx, grp, i, d, r)
 		carea := clip.Rect(cr).Push(gtx.Ops)
 		event.Op(gtx.Ops, &grp.tabCloseTags[i%len(grp.tabCloseTags)])
 		carea.Pop()
@@ -210,19 +215,6 @@ func (a *App) layoutTabs(gtx layout.Context) layout.Dimensions {
 			} else {
 				a.active = idx
 				a.pressed = true
-			}
-		} else if e, ok := clicked(gtx, &grp.tabTags[i%len(grp.tabTags)]); ok {
-			a.pressed = true
-			if grp.tabClickIdx == i && gtx.Now.Sub(grp.tabClickAt) < 400*time.Millisecond {
-				d.preview = false // double click keeps a preview tab
-			}
-			grp.tabClickIdx, grp.tabClickAt = i, gtx.Now
-			if e.Buttons == pointer.ButtonTertiary {
-				idx := i
-				defer a.closeDoc(idx, nil)
-			} else {
-				a.active = i
-				a.focusEditor = true
 			}
 		}
 		x += tabW + gtx.Dp(1)
@@ -350,6 +342,7 @@ func (a *App) layoutSidebar(gtx layout.Context) layout.Dimensions {
 	c := a.chrome
 	// Never take more than ~45% of the window, so the editor stays usable.
 	w := min(gtx.Dp(unit.Dp(a.sidebarW)), gtx.Constraints.Max.X*45/100)
+	a.sidebarPx = w
 	h := gtx.Constraints.Max.Y
 	gtx.Constraints = layout.Exact(image.Pt(w, h))
 	fill(gtx.Ops, image.Rect(0, 0, w, h), c.Sidebar)

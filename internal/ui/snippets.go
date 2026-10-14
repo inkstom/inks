@@ -55,7 +55,7 @@ func scopeMatches(selector, lang string) bool {
 	return false
 }
 
-func (a *App) loadSnippetsAndSchemes() {
+func (a *Shared) loadSnippetsAndSchemes() {
 	a.snippets = nil
 	for _, pat := range []string{"*.inks-snippet", "*.sublime-snippet"} {
 		for _, f := range findResources(pat) {
@@ -88,7 +88,9 @@ func (a *App) loadSnippetsAndSchemes() {
 			theme.RegisterExternal(s)
 		}
 	}
-	a.applyTheme()
+	for _, w := range a.windows {
+		w.applyTheme()
+	}
 }
 
 // snippetsFor lists snippets that apply to d.

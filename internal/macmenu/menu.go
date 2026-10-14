@@ -32,7 +32,14 @@ type Item struct {
 var (
 	fire       func(id int)
 	shouldQuit func() bool
+	reopen     func()
 )
+
+// OnReopen registers fn for a Dock click while no window is open.
+func OnReopen(fn func()) {
+	reopen = fn
+	installReopen()
+}
 
 // Set replaces the menu bar. fire is called (on the Cocoa main thread) with
 // the ID of a clicked item.

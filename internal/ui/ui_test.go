@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"gioui.org/app"
@@ -171,5 +173,26 @@ func TestSnippetInsert(t *testing.T) {
 }]]></content><tabTrigger>fori</tabTrigger><scope>source.go</scope></snippet>`))
 	if !ok || sn.trigger != "fori" || !scopeMatches(sn.scope, "Go") || scopeMatches(sn.scope, "Python") {
 		t.Fatalf("parse snippet: %+v", sn)
+	}
+}
+
+func TestSessionMigration(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("INKS_USER_DATA", dir)
+	t.Setenv("INKS_NO_SESSION", "")
+	_ = os.MkdirAll(filepath.Join(dir, "Local"), 0o755)
+	old := `{"version": 2, "docs": [{"path": "/tmp/a.txt", "lang": "Go", "line": 3}], "folders": ["/tmp"], "recent": ["/tmp/a.txt"]}`
+	if err := os.WriteFile(sessionPath(), []byte(old), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s := loadSession()
+	if s == nil || len(s.Windows) != 1 || len(s.Windows[0].Docs) != 1 || s.Windows[0].Folders[0] != "/tmp" || s.Recent[0] != "/tmp/a.txt" {
+		t.Fatalf("migrated session: %+v", s)
+	}
+	sh := &Shared{recent: []string{"x"}, recentFolders: []string{"/f"}}
+	sh.saveSession() // no windows: writes an empty window list
+	s = loadSession()
+	if s == nil || s.Version != 3 || len(s.Windows) != 0 || s.RecentFolders[0] != "/f" {
+		t.Fatalf("v3 session: %+v", s)
 	}
 }

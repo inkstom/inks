@@ -36,7 +36,7 @@ import (
 // holding the app lock (between frames), so a plugin making many calls is
 // not throttled to the frame rate.
 type PyHost struct {
-	a       *App
+	s       *Shared
 	cmd     *exec.Cmd
 	stdin   io.WriteCloser
 	wmu     sync.Mutex
@@ -60,8 +60,8 @@ type PyHost struct {
 	notified   map[*Doc]int // doc → version sent with on_modified
 }
 
-func newPyHost(a *App) *PyHost {
-	return &PyHost{a: a, pending: map[int]func(json.RawMessage, error){}, commands: map[string]string{},
+func newPyHost(s *Shared) *PyHost {
+	return &PyHost{s: s, pending: map[int]func(json.RawMessage, error){}, commands: map[string]string{},
 		events: map[string]bool{}, winSet: map[string]any{}, panels: map[string]*Doc{}, byID: map[int]*Doc{},
 		pyMods: map[string]time.Time{}, notified: map[*Doc]int{}}
 }
@@ -104,7 +104,7 @@ func hasPlugins() bool {
 
 // start launches the host (once).
 func (h *PyHost) start() {
-	a := h.a
+	a := h.s
 	if h.started || !a.set.Bool("plugins_enabled") {
 		return
 	}
@@ -195,7 +195,7 @@ type hostMsg struct {
 }
 
 func (h *PyHost) read(r io.Reader) {
-	a := h.a
+	a := h.s
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 1<<20), 64<<20)
 	for sc.Scan() {
@@ -228,7 +228,7 @@ func (h *PyHost) read(r io.Reader) {
 			} else {
 				h.send(map[string]any{"rid": *m.RID, "result": res})
 			}
-			go a.win.Invalidate()
+			go a.invalidateAll()
 		case m.ID != nil:
 			h.pmu.Lock()
 			done := h.pending[*m.ID]
@@ -288,7 +288,7 @@ func (h *PyHost) applyRegistry(raw json.RawMessage) *registry {
 }
 
 func (h *PyHost) loadPlugins() {
-	a := h.a
+	a := h.s
 	h.request("load_plugins", nil, func(raw json.RawMessage, err error) {
 		if err != nil {
 			a.consoleLog("plugin loading failed: "+err.Error(), true)
@@ -299,8 +299,8 @@ func (h *PyHost) loadPlugins() {
 		}
 		h.snapshotPyFiles()
 		a.loadPackageResources()
-		if d := a.doc(); d != nil {
-			h.event("on_activated", d, nil, nil)
+		if w := a.active(); w != nil && w.doc() != nil {
+			h.event("on_activated", w.doc(), nil, nil)
 		}
 	})
 }
@@ -318,7 +318,7 @@ func (h *PyHost) snapshotPyFiles() {
 }
 
 func (h *PyHost) checkPlugins() {
-	a := h.a
+	a := h.s
 	if !h.ready {
 		if !h.started && hasPlugins() {
 			h.start()
@@ -368,10 +368,12 @@ func (h *PyHost) runCommand(name string, args map[string]any, d *Doc) bool {
 	if args == nil {
 		args = map[string]any{}
 	}
-	params := map[string]any{"name": name, "args": args, "window": 1}
+	params := map[string]any{"name": name, "args": args, "window": h.s.activeID()}
 	if kind == "text" {
 		if d == nil {
-			d = h.a.doc()
+			if w := h.s.active(); w != nil {
+				d = w.doc()
+			}
 		}
 		if d == nil {
 			return true
@@ -384,7 +386,9 @@ func (h *PyHost) runCommand(name string, args map[string]any, d *Doc) bool {
 			d.M.Buf.BreakUndoGroup()
 		}
 		if err != nil {
-			h.a.setStatus(name+": "+err.Error(), 0)
+			if w := h.s.active(); w != nil {
+				w.setStatus(name+": "+err.Error(), 0)
+			}
 		}
 	})
 	return true
@@ -398,7 +402,7 @@ func (h *PyHost) event(name string, d *Doc, args []any, done func(json.RawMessag
 		}
 		return
 	}
-	params := map[string]any{"name": name, "window": 1, "args": args}
+	params := map[string]any{"name": name, "window": h.s.activeID(), "args": args}
 	if d != nil {
 		params["view"] = d.ID
 	}
@@ -416,11 +420,10 @@ func (h *PyHost) event(name string, d *Doc, args []any, done func(json.RawMessag
 }
 
 // afterFrame sends activation, modification and selection events.
-func (h *PyHost) afterFrame() {
+func (h *PyHost) afterFrame(a *App) {
 	if !h.ready {
 		return
 	}
-	a := h.a
 	d := a.doc()
 	if d != h.lastActive {
 		if h.lastActive != nil && a.isOpen(h.lastActive) {
@@ -460,11 +463,12 @@ func (h *PyHost) callback(id any, args []any, release bool) {
 
 func (h *PyHost) eval(source string) {
 	if !h.ready {
-		h.a.consoleLog("plugin host is not running (no Python plugins are installed, or Python was not found)", true)
+		h.s.consoleLog("plugin host is not running (no Python plugins are installed, or Python was not found)", true)
 		return
 	}
-	params := map[string]any{"source": source, "window": 1}
-	if d := h.a.doc(); d != nil {
+	params := map[string]any{"source": source, "window": h.s.activeID()}
+	if w := h.s.active(); w != nil && w.doc() != nil {
+		d := w.doc()
 		params["view"] = d.ID
 	}
 	h.request("eval", params, nil)
@@ -474,7 +478,7 @@ func (h *PyHost) eval(source string) {
 // Console output
 
 type consoleWriter struct {
-	a   *App
+	a   *Shared
 	err bool
 }
 
@@ -485,7 +489,7 @@ func (w *consoleWriter) Write(p []byte) (int, error) {
 }
 
 // consoleWrite appends raw output, continuing an unfinished last line.
-func (a *App) consoleWrite(text string, isErr bool) {
+func (a *Shared) consoleWrite(text string, isErr bool) {
 	if text == "" {
 		return
 	}
@@ -508,7 +512,7 @@ func (a *App) consoleWrite(text string, isErr bool) {
 	}
 }
 
-func (a *App) consoleLog(text string, isErr bool) {
+func (a *Shared) consoleLog(text string, isErr bool) {
 	a.consoleOpen = false
 	for _, l := range strings.Split(text, "\n") {
 		a.console = append(a.console, outLine{text: strings.ReplaceAll(l, "\t", "    "), err: isErr})
@@ -612,10 +616,11 @@ func pairs(v any) [][2]int {
 }
 
 func (h *PyHost) view(id int) *Doc {
-	a := h.a
-	for _, d := range a.allDocs() {
-		if d.ID == id {
-			return d
+	for _, w := range h.s.windows {
+		for _, d := range w.allDocs() {
+			if d.ID == id {
+				return d
+			}
 		}
 	}
 	return h.byID[id]
@@ -674,10 +679,30 @@ func syntaxFromPath(p string) string {
 }
 
 func (h *PyHost) api(method string, p map[string]any) (any, error) {
-	a := h.a
 	var d *Doc
 	if id, ok := p["view"].(float64); ok {
 		d = h.view(int(id))
+	}
+	// The window this call is about: the view's, the named one, or the focused one.
+	a := h.s.active()
+	if wid, ok := p["window"].(float64); ok {
+		for _, w := range h.s.windows {
+			if w.id == int(wid) {
+				a = w
+			}
+		}
+	}
+	if d != nil {
+		if w := h.s.ownerOf(d); w != nil {
+			a = w
+		}
+	}
+	if a == nil {
+		if method == "app_info" || method == "windows" || method == "active_window" {
+			a = &App{Shared: h.s}
+		} else {
+			return nil, fmt.Errorf("no inks window is open")
+		}
 	}
 	need := func() error {
 		if d == nil {
@@ -727,9 +752,13 @@ func (h *PyHost) api(method string, p map[string]any) (any, error) {
 		out, _ := exec.Command("pbpaste").Output()
 		return string(out), nil
 	case "active_window":
-		return 1, nil
+		return h.s.activeID(), nil
 	case "windows":
-		return []int{1}, nil
+		var ids []int
+		for _, w := range h.s.windows {
+			ids = append(ids, w.id)
+		}
+		return ids, nil
 	case "run_command":
 		args, _ := p["args"].(map[string]any)
 		name := pStr(p, "name")
@@ -1688,7 +1717,7 @@ func resourcePath(name string) string {
 
 // loadPackageResources adds palette entries and key bindings from packages
 // (*.inks-commands / *.inks-keymap, and their legacy spellings).
-func (a *App) loadPackageResources() {
+func (a *Shared) loadPackageResources() {
 	a.pkgPalette = nil
 	var cmdFiles []string
 	for _, pat := range []string{"*.inks-commands", "*.sublime-commands"} {

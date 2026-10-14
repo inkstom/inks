@@ -2,7 +2,6 @@
 package ui
 
 import (
-	"encoding/json"
 	"fmt"
 	"image"
 	"os"
@@ -17,6 +16,7 @@ import (
 	"gioui.org/io/input"
 	"gioui.org/io/key"
 	"gioui.org/io/pointer"
+	"gioui.org/io/system"
 	"gioui.org/io/transfer"
 	"gioui.org/layout"
 	"gioui.org/op"
@@ -24,18 +24,26 @@ import (
 
 	"inks/internal/buffer"
 	"inks/internal/macmenu"
-	"inks/internal/pkgctl"
 	"inks/internal/platform"
 	"inks/internal/settings"
 	"inks/internal/theme"
 )
 
-// App is one inks window.
+// App is one inks window. It embeds the state all windows share.
 type App struct {
-	win    *app.Window
+	*Shared
+
+	id      int
+	win     *app.Window
+	view    uintptr // the NSView, once the window exists
+	closing bool    // closing on purpose (unsaved changes were handled)
+	title   string
+	done    chan struct{}
+	// atMouse places the new window under the pointer (a torn-off tab).
+	atMouse bool
+
 	ops    op.Ops
 	fonts  *Fonts
-	set    *settings.Settings
 	scheme *theme.Scheme
 	chrome theme.Chrome
 
@@ -50,7 +58,6 @@ type App struct {
 	sidebarPinned bool
 	sidebarW      int // dp
 
-	keymap   *Keymap
 	commands map[string]*Command
 	palette  []PaletteEntry
 
@@ -61,11 +68,8 @@ type App struct {
 	git    *gitInfo
 	output *OutputPanel
 
-	sideMode  string // "folders" or "search"
-	resizing  bool
-	recent    []string
-	menuStale bool
-	mu        sync.Mutex // held while a frame runs (see onTerminate)
+	sideMode string // "folders" or "search"
+	resizing bool
 
 	status      string
 	statusUntil time.Time
@@ -92,16 +96,18 @@ type App struct {
 
 	inFrame bool            // a frame is being processed (gtx is live)
 	cmdQ    []input.Command // Gio commands issued between frames
-	py      *PyHost
 
-	console     []outLine
-	consoleOpen bool               // the last console line has no newline yet
-	hovered     map[event.Tag]bool // areas under the pointer (see hit)
-	pkgPalette  []PaletteEntry
-	popup       *popup
-	complete    *Completer
-	pkg         *pkgctl.Manager
-	snippets    []snippet
+	hovered  map[event.Tag]bool // areas under the pointer (see hit)
+	popup    *popup
+	complete *Completer
+
+	// Tab dragging (see tabs.go).
+	drag         *tabDrag
+	pendingDrop  *tabDrag
+	pendingClose *Doc
+	sidebarPx    int         // side bar width this frame
+	tabBarH      int         // tab bar height
+	winSize      image.Point // window size this frame
 
 	jumps     []jump
 	jumpAt    int
@@ -114,28 +120,23 @@ type App struct {
 	// Click targets (stable addresses so Gio can route pointer events).
 	statusTags    [4]statusTag
 	sidebarScroll struct{ _ int }
-
-	// Last copy, so a multi-caret paste can distribute the pieces.
-	clipboardText  string
-	clipboardParts []string
-	clipboardLines bool
 }
 
 type editorTagT struct{}
 
-// New creates the window state; open lists files/folders from the command line.
-func New(w *app.Window, open []string) *App {
+// newApp creates a window's state (see Shared.NewWindow).
+func newApp(s *Shared, w *app.Window) *App {
 	a := &App{
+		Shared:      s,
 		win:         w,
-		set:         settings.Load(),
 		showSidebar: true,
 		sidebarW:    240,
 		editorTag:   &editorTagT{},
+		done:        make(chan struct{}),
 	}
 	a.initGroups()
 	a.fonts = newFonts(a.set.String("font_face"))
 	a.applyTheme()
-	a.keymap = newKeymap()
 	a.tree = newTree(a)
 	a.quick = newQuickPanel(a)
 	a.find = newFindPanel(a)
@@ -143,58 +144,46 @@ func New(w *app.Window, open []string) *App {
 	a.search = newSearchView(a)
 	a.git = newGitInfo()
 	a.output = newOutputPanel(a)
-	a.py = newPyHost(a)
 	a.complete = newCompleter(a)
 	a.sideMode = "folders"
 	a.registerCommands()
 	a.showSidebar = a.set.Bool("show_side_bar")
-	if !a.restoreSession() {
-		a.newDoc("", "")
-	}
-	for _, p := range open {
-		a.openPath(p)
-	}
-	if len(a.docs) == 0 {
-		a.newDoc("", "")
-	}
-	a.focusEditor = true
-	a.installMenu()
-	macmenu.OnTerminate(a.onTerminate)
-	a.loadPackageResources()
-	if hasPlugins() {
-		a.py.start()
-	}
 	return a
 }
 
-// OpenLater opens files or folders (from Finder, the Dock or the command line).
-func (a *App) OpenLater(paths ...string) {
-	a.Do(func() {
-		for _, p := range paths {
-			if st, err := os.Stat(p); err == nil && st.IsDir() {
-				a.addFolder(p)
-				a.showSidebar = true
-				a.sideMode = "folders"
-				continue
-			}
-			a.openPath(p)
-		}
-	})
+// openAny opens a file in this window, or a folder (see openFolder).
+func (a *App) openAny(p string) {
+	if st, err := os.Stat(p); err == nil && st.IsDir() {
+		a.openFolder(p)
+		return
+	}
+	a.openPath(p)
 }
 
-// onTerminate runs on the main thread when the app is asked to quit (menu,
-// Dock, logout): save the session so unsaved work survives.
-func (a *App) onTerminate() bool {
-	deadline := time.Now().Add(time.Second)
-	for !a.mu.TryLock() {
-		if time.Now().After(deadline) {
-			return true
-		}
-		time.Sleep(5 * time.Millisecond)
+// openFolder shows a folder: in this window if it has none yet, otherwise
+// in a new window (File › Add Folder to Workspace adds to this one).
+func (a *App) openFolder(p string) {
+	if abs, err := filepath.Abs(p); err == nil {
+		p = abs
 	}
-	a.saveSession()
-	a.mu.Unlock()
-	return true
+	for _, w := range a.windows {
+		for _, f := range w.folders {
+			if f == p {
+				w.perform(system.ActionRaise)
+				return
+			}
+		}
+	}
+	if len(a.folders) == 0 {
+		a.addFolder(p)
+		a.showSidebar = true
+		a.sideMode = "folders"
+		return
+	}
+	a.NewWindow(func(n *App) {
+		n.addFolder(p)
+		n.showSidebar = true
+	})
 }
 
 func (a *App) indexOf(d *Doc) int {
@@ -258,13 +247,38 @@ func (a *App) setStatus(msg string, d time.Duration) {
 }
 
 // Run processes window events until the window closes.
-func (a *App) Run() error {
+func (a *App) Run() {
 	go a.checkpointLoop()
 	for {
 		switch e := a.win.Event().(type) {
 		case app.DestroyEvent:
-			a.saveSession()
-			return e.Err
+			close(a.done)
+			a.mu.Lock()
+			a.windowClosed(a)
+			a.mu.Unlock()
+			return
+		case app.ConfigEvent:
+			if e.Config.Focused {
+				a.mu.Lock()
+				a.focused = a
+				a.mu.Unlock()
+			}
+		case app.AppKitViewEvent:
+			if e.View != 0 {
+				a.view = e.View
+				if a.atMouse {
+					a.atMouse = false
+					macmenu.PlaceWindowAtMouse(e.View)
+				}
+			}
+		case *app.ClosingEvent:
+			// The close button: ask about unsaved changes first.
+			a.mu.Lock()
+			if !a.closing && a.hasUnsaved() {
+				e.Abort()
+				a.Do(a.closeWindow)
+			}
+			a.mu.Unlock()
 		case app.FrameEvent:
 			gtx := app.NewContext(&a.ops, e)
 			a.mu.Lock()
@@ -277,19 +291,19 @@ func (a *App) Run() error {
 
 func (a *App) checkpointLoop() {
 	tick := time.NewTicker(1500 * time.Millisecond)
+	defer tick.Stop()
 	n := 0
-	for range tick.C {
+	for {
+		select {
+		case <-a.done:
+			return
+		case <-tick.C:
+		}
 		n++
 		a.Do(func() {
 			a.checkDisk()
-			if n%2 == 0 {
-				a.py.checkPlugins()
-			}
 			if n%4 == 1 {
 				a.refreshGit()
-			}
-			if n%20 == 0 {
-				a.saveSession()
 			}
 		})
 	}
@@ -379,7 +393,9 @@ func (a *App) frame(gtx layout.Context) {
 	}
 	a.updateTitle()
 	a.noteJumps()
-	a.py.afterFrame()
+	if a.focused == a {
+		a.py.afterFrame(a)
+	}
 	if a.menuStale {
 		a.menuStale = false
 		a.installMenu()
@@ -389,6 +405,8 @@ func (a *App) frame(gtx layout.Context) {
 // drawUI lays out and paints the whole window.
 func (a *App) drawUI(gtx layout.Context) {
 	fill(gtx.Ops, image.Rectangle{Max: gtx.Constraints.Max}, a.scheme.Bg)
+	a.winSize = gtx.Constraints.Max
+	a.sidebarPx = 0
 
 	layout.Flex{Axis: layout.Vertical}.Layout(gtx,
 		layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
@@ -424,6 +442,7 @@ func (a *App) drawUI(gtx layout.Context) {
 	if a.quick.visible {
 		a.quick.Layout(gtx)
 	}
+	a.drawTabDrag(gtx)
 }
 
 func (a *App) layoutEditorArea(gtx layout.Context) layout.Dimensions {
@@ -433,8 +452,6 @@ func (a *App) layoutEditorArea(gtx layout.Context) layout.Dimensions {
 	}
 	return a.layoutEditor(gtx, d)
 }
-
-var lastTitle string
 
 func (a *App) updateTitle() {
 	d := a.doc()
@@ -449,8 +466,8 @@ func (a *App) updateTitle() {
 		}
 		title = name + " — inks"
 	}
-	if title != lastTitle {
-		lastTitle = title
+	if title != a.title {
+		a.title = title
 		a.win.Option(app.Title(title))
 	}
 }
@@ -574,11 +591,13 @@ func (a *App) openPath(p string) *Doc {
 		a.addFolder(p)
 		return nil
 	}
-	for _, d := range a.allDocs() {
-		if d.Path == p {
-			a.activate(d)
-			return d
+	if w, d := a.findOpen(p); d != nil {
+		// Already open: show it where it is.
+		w.activate(d)
+		if w != a {
+			w.perform(system.ActionRaise)
 		}
+		return d
 	}
 	text, mt, err := "", time.Time{}, error(nil)
 	if st != nil {
@@ -642,6 +661,7 @@ func (a *App) addFolder(p string) {
 	a.folders = append(a.folders, p)
 	a.tree.expanded[p] = true
 	a.fileCache = nil
+	a.noteRecentFolder(p)
 }
 
 func (a *App) save(d *Doc, then func()) {
@@ -771,10 +791,13 @@ func (a *App) reloadSettings() {
 		return
 	}
 	a.keymap.Load()
-	a.fonts.SetMono(a.set.String("font_face"))
-	a.applyTheme()
-	for _, d := range a.allDocs() {
-		d.applySettings(a.set)
+	for _, w := range a.windows {
+		w.fonts.SetMono(a.set.String("font_face"))
+		w.applyTheme()
+		for _, d := range w.allDocs() {
+			d.applySettings(a.set)
+		}
+		w.win.Invalidate()
 	}
 	a.menuStale = true
 }
@@ -822,16 +845,10 @@ type session struct {
 	Actives  []int        `json:"groupActive,omitempty"`
 }
 
-func sessionPath() string {
-	return filepath.Join(settings.DataDir(), "Local", "Session.inks_session.json")
-}
-
-func (a *App) saveSession() {
-	if os.Getenv("INKS_NO_SESSION") != "" {
-		return
-	}
-	s := session{Version: 2, Active: a.active, Folders: a.folders, Sidebar: a.showSidebar, Closed: a.closed,
-		Recent: a.recent, SideMode: a.sideMode, SideW: a.sidebarW, Pinned: a.sidebarPinned}
+// sessionState captures this window for the session file.
+func (a *App) sessionState() session {
+	s := session{Version: 3, Active: a.active, Folders: a.folders, Sidebar: a.showSidebar, Closed: a.closed,
+		SideMode: a.sideMode, SideW: a.sidebarW, Pinned: a.sidebarPinned}
 	for p, open := range a.tree.expanded {
 		if open {
 			s.Expanded = append(s.Expanded, p)
@@ -863,23 +880,11 @@ func (a *App) saveSession() {
 		}
 		s.Docs = append(s.Docs, sd)
 	}
-	data, _ := json.Marshal(s)
-	_ = os.MkdirAll(filepath.Dir(sessionPath()), 0o755)
-	_ = os.WriteFile(sessionPath(), data, 0o644)
+	return s
 }
 
-func (a *App) restoreSession() bool {
-	if os.Getenv("INKS_NO_SESSION") != "" {
-		return false
-	}
-	data, err := os.ReadFile(sessionPath())
-	if err != nil {
-		return false
-	}
-	var s session
-	if json.Unmarshal(data, &s) != nil {
-		return false
-	}
+// restoreFrom refills this window from its saved state.
+func (a *App) restoreFrom(s *session) bool {
 	for _, f := range s.Folders {
 		if st, err := os.Stat(f); err == nil && st.IsDir() {
 			a.addFolder(f)
@@ -891,7 +896,6 @@ func (a *App) restoreSession() bool {
 	a.showSidebar = s.Sidebar
 	a.sidebarPinned = s.Pinned
 	a.closed = s.Closed
-	a.recent = s.Recent
 	if s.SideMode != "" {
 		a.sideMode = s.SideMode
 	}
@@ -957,10 +961,7 @@ func (a *App) restoreSession() bool {
 
 // quit saves the session and closes the window. Unsaved work is kept by hot
 // exit (like closing and reopening the app later).
-func (a *App) quit() {
-	a.saveSession()
-	a.win.Perform(systemClose())
-}
+func (a *App) quit() { a.Shared.quit() }
 
 var _ = pointer.Press
 var _ = unit.Dp(0)

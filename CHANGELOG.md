@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- **Multiple windows:** File › New Window (⇧⌘N), Close Window (⇧⌘W), Add Folder to Workspace, Duplicate Workspace, Close Folder, and recent folders in Open Recent. Open Folder uses a new window when the current one already has a folder.
+- **Tabs:** drag to reorder or to move to another split group, and drag out of the window to open the file in a new window under the pointer. Right-click a tab for close actions, Open in New Window, splitting, moving to another window, copying its path and Reveal in Finder.
+- Opening a file that's already open in another window switches to it there.
+- Closing a window asks about unsaved files. Quitting restores every window next time, and clicking the Dock icon with no windows open opens one.
+- The first click in an inactive window acts right away, so you can drag a tab or place the caret without activating the window first.
+
 ## 1.0.0 — 2026-10-13
 
 First release of the native inks: one Go binary drawing with [Gio](https://gioui.org), with no web view. The app is about 18 MB.

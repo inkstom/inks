@@ -139,3 +139,95 @@ char *inks_dump_menu(void) {
 	});
 	return res;
 }
+
+// Place a window so its title bar sits under the pointer (a torn-off tab).
+// The pointer is read now, on the calling thread; CoreGraphics is safe here.
+void inks_place_window_at_mouse(uintptr_t viewRef) {
+	CGEventRef ev = CGEventCreate(NULL);
+	CGPoint p = CGEventGetLocation(ev); // top-left origin, global
+	CFRelease(ev);
+	dispatch_async(dispatch_get_main_queue(), ^{
+		NSView *view = (__bridge NSView *)(void *)viewRef;
+		NSWindow *w = view.window;
+		if (w == nil) {
+			return;
+		}
+		CGFloat top = NSMaxY(NSScreen.screens.firstObject.frame);
+		// A little left of the pointer, so it lands over the new window's tab.
+		[w setFrameTopLeftPoint:NSMakePoint(p.x - 80, top - p.y + 14)];
+		[w makeKeyAndOrderFront:nil];
+	});
+}
+
+void inks_terminate(void) {
+	dispatch_async(dispatch_get_main_queue(), ^{
+		[NSApp terminate:nil];
+	});
+}
+
+static BOOL inksAppShouldHandleReopen(id self, SEL _cmd, NSApplication *app, BOOL hasVisibleWindows) {
+	if (!hasVisibleWindows) {
+		inksReopen();
+	}
+	return YES;
+}
+
+void inks_install_reopen(void) {
+	dispatch_async(dispatch_get_main_queue(), ^{
+		id del = NSApp.delegate;
+		if (del != nil) {
+			class_addMethod([del class], @selector(applicationShouldHandleReopen:hasVisibleWindows:),
+			                (IMP)inksAppShouldHandleReopen, "c@:@c");
+		}
+	});
+}
+
+@interface InksPopupTarget : NSObject
+@property int picked;
+@end
+@implementation InksPopupTarget
+- (void)pick:(NSMenuItem *)item {
+	self.picked = (int)item.tag;
+}
+@end
+
+// Show a context menu at the pointer; report the chosen index (or -1).
+void inks_popup(const char *json, int len, int token) {
+	NSData *data = [NSData dataWithBytes:json length:len];
+	dispatch_async(dispatch_get_main_queue(), ^{
+		NSArray *items = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+		InksPopupTarget *t = [InksPopupTarget new];
+		t.picked = -1;
+		NSMenu *menu = [[NSMenu alloc] initWithTitle:@""];
+		menu.autoenablesItems = NO;
+		NSInteger i = 0;
+		for (NSString *title in items) {
+			if (title.length == 0) {
+				[menu addItem:[NSMenuItem separatorItem]];
+			} else {
+				NSMenuItem *mi = [[NSMenuItem alloc] initWithTitle:title action:@selector(pick:) keyEquivalent:@""];
+				mi.target = t;
+				mi.tag = i;
+				[menu addItem:mi];
+			}
+			i++;
+		}
+		[menu popUpMenuPositioningItem:nil atLocation:[NSEvent mouseLocation] inView:nil];
+		inksPopupDone(token, t.picked);
+	});
+}
+
+static BOOL inksAcceptsFirstMouse(id self, SEL _cmd, NSEvent *event) {
+	return YES;
+}
+
+// Let the first click in an inactive window also act (select or drag a tab,
+// place the caret), like other editors, instead of only activating it.
+void inks_accept_first_mouse(void) {
+	dispatch_async(dispatch_get_main_queue(), ^{
+		Class cls = NSClassFromString(@"GioView");
+		if (cls != nil) {
+			class_addMethod(cls, @selector(acceptsFirstMouse:), (IMP)inksAcceptsFirstMouse, "c@:@");
+		}
+	});
+}

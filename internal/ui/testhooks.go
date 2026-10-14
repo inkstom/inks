@@ -572,6 +572,66 @@ func SelfTest(dir string) *TestHooks {
 			return expect(!a.find.visible, "hide_panel left the find panel open")
 		},
 		func(a *App) error {
+			// Multiple windows: File › New Window opens a second, focused one.
+			before := len(a.windows)
+			a.run("new_window", nil)
+			if len(a.windows) != before+1 || a.focused == a {
+				return fmt.Errorf("new window: %d → %d windows", before, len(a.windows))
+			}
+			a.focused = a
+			return nil
+		},
+		func(a *App) error {
+			// Open in New Window moves the tab; opening the file again from the
+			// first window shows it where it is instead of opening a copy.
+			p := dir + "/moved.txt"
+			_ = os.WriteFile(p, []byte("moved\n"), 0o644)
+			d := a.openPath(p)
+			n := len(a.windows)
+			a.moveToNewWindow(d, false)
+			if a.isOpen(d) || len(a.windows) != n+1 {
+				return fmt.Errorf("move to new window: still here %v, %d windows", a.isOpen(d), len(a.windows))
+			}
+			other := a.ownerOf(d)
+			if other == nil || other == a || other.doc() != d {
+				return fmt.Errorf("moved doc not active in the new window")
+			}
+			count := len(a.allDocs())
+			got := a.openPath(p)
+			return expect(got == d && len(a.allDocs()) == count, "reopen should find the other window's tab (copies: %d→%d)", count, len(a.allDocs()))
+		},
+		func(a *App) error {
+			// Dragging a tab within the bar reorders it.
+			a.focused = a
+			x := a.newDoc("x", "")
+			y := a.newDoc("y", "")
+			z := a.newDoc("z", "")
+			a.moveTab(z, a.focus, a.indexOf(x))
+			if a.indexOf(z) != a.indexOf(x)-1 || a.indexOf(y) != a.indexOf(x)+1 {
+				return fmt.Errorf("reorder: x=%d y=%d z=%d", a.indexOf(x), a.indexOf(y), a.indexOf(z))
+			}
+			// Dropping it outside the window tears it off into a new window.
+			n := len(a.windows)
+			a.dropTab(&tabDrag{doc: y, group: a.focus, pos: image.Pt(-200, -200)})
+			return expect(!a.isOpen(y) && len(a.windows) == n+1 && a.ownerOf(y) != nil, "tear off: %d windows", len(a.windows))
+		},
+		func(a *App) error {
+			// Closing windows without unsaved files needs no questions.
+			a.focused = a
+			for _, w := range a.windows {
+				if w != a && !w.hasUnsaved() {
+					w.closeWindow()
+				}
+			}
+			return nil
+		},
+		func(a *App) error {
+			if len(a.windows) > 1 {
+				return errWait
+			}
+			return expect(a.windows[0] == a && a.active >= 0, "windows left: %d", len(a.windows))
+		},
+		func(a *App) error {
 			// Menu shortcuts reflect key bindings.
 			k, m := menuKey(a.keymap.SingleKeyFor("show_find_in_files", nil))
 			if err := expect(k == "f" && m == macmenuCmdShift, "menu key: %q %x", k, m); err != nil {

@@ -3,13 +3,10 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"os"
-	"sync"
 
 	"gioui.org/app"
 	"gioui.org/io/event"
-	"gioui.org/unit"
 
 	"inks/internal/ui"
 )
@@ -40,40 +37,16 @@ func main() {
 			return
 		}
 	}
-	var (
-		mu      sync.Mutex
-		inst    *ui.App
-		pending []string
-	)
-	go func() {
-		w := new(app.Window)
-		w.Option(app.Title("inks"), app.Size(unit.Dp(1280), unit.Dp(820)), app.MinSize(unit.Dp(400), unit.Dp(260)))
-		a := ui.New(w, args)
-		if os.Getenv("INKS_SELFTEST") != "" {
-			dir, _ := os.MkdirTemp("", "inks-selftest-")
-			a.Test = ui.SelfTest(dir)
-		}
-		mu.Lock()
-		inst = a
-		if len(pending) > 0 {
-			a.OpenLater(pending...)
-		}
-		mu.Unlock()
-		if err := a.Run(); err != nil {
-			log.Fatal(err)
-		}
-		os.Exit(0)
-	}()
+	s := ui.NewShared()
+	if os.Getenv("INKS_SELFTEST") != "" {
+		dir, _ := os.MkdirTemp("", "inks-selftest-")
+		s.Test = ui.SelfTest(dir)
+	}
+	go s.Start(args)
 	// Files opened from Finder or dropped on the Dock icon arrive as URLs.
 	app.Events(func(e event.Event) bool {
 		if u, ok := e.(app.URLEvent); ok && u.URL != nil && u.URL.Scheme == "file" {
-			mu.Lock()
-			if inst != nil {
-				inst.OpenLater(u.URL.Path)
-			} else {
-				pending = append(pending, u.URL.Path)
-			}
-			mu.Unlock()
+			s.OpenLater(u.URL.Path)
 		}
 		return true
 	})

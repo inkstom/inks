@@ -119,12 +119,45 @@ func (a *App) registerCommands() {
 	reg("prompt_open_folder", "File: Open Folder…", func(map[string]any) {
 		go func() {
 			if dir := platform.OpenFolder("Open Folder", a.defaultDir()); dir != "" {
+				a.Do(func() { a.openFolder(dir) })
+			}
+		}()
+	})
+	reg("prompt_add_folder", "File: Add Folder to Workspace…", func(map[string]any) {
+		go func() {
+			if dir := platform.OpenFolder("Add Folder to Workspace", a.defaultDir()); dir != "" {
 				a.Do(func() {
 					a.addFolder(dir)
 					a.showSidebar = true
+					a.sideMode = "folders"
 				})
 			}
 		}()
+	})
+	reg("open_folder_path", "", func(args map[string]any) {
+		if p := argString(args, "folder"); p != "" {
+			a.openFolder(p)
+		}
+	})
+	reg("close_folder", "File: Close Folder", func(map[string]any) {
+		a.folders = nil
+		a.tree.refresh()
+		a.fileCache = nil
+	})
+	reg("new_window", "File: New Window", func(map[string]any) { a.NewWindow(nil) })
+	reg("duplicate_workspace", "File: Duplicate Workspace", func(map[string]any) {
+		a.NewWindow(func(n *App) {
+			for _, f := range a.folders {
+				n.addFolder(f)
+			}
+			n.showSidebar, n.sidebarPinned, n.sidebarW = a.showSidebar, a.sidebarPinned, a.sidebarW
+		})
+	})
+	reg("close_window", "File: Close Window", func(map[string]any) { a.closeWindow() })
+	reg("move_to_new_window", "File: Move File to New Window", func(map[string]any) {
+		if d := a.doc(); d != nil {
+			a.moveToNewWindow(d, false)
+		}
 	})
 	reg("save", "File: Save", func(map[string]any) {
 		if d := a.doc(); d != nil {
@@ -169,6 +202,7 @@ func (a *App) registerCommands() {
 	})
 	reg("clear_recent_files", "File: Clear Recent Files", func(map[string]any) {
 		a.recent = nil
+		a.recentFolders = nil
 		a.menuStale = true
 	})
 	reg("reveal_in_finder", "File: Reveal in Finder", func(map[string]any) {

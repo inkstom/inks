@@ -42,6 +42,12 @@ func subMenu(title string, items ...menuItem) menuItem {
 
 func (a *App) menuSpec() []menuItem {
 	var recent []menuItem
+	for _, p := range a.recentFolders {
+		recent = append(recent, cmdItem(tildify(p), "open_folder_path", "folder", p))
+	}
+	if len(a.recentFolders) > 0 && len(a.recent) > 0 {
+		recent = append(recent, sep)
+	}
 	for _, p := range a.recent {
 		recent = append(recent, cmdItem(tildify(p), "open_file", "file", p))
 	}
@@ -93,10 +99,16 @@ func (a *App) menuSpec() []menuItem {
 		),
 		subMenu("File",
 			cmdItem("New File", "new_file"),
+			cmdItem("New Window", "new_window"),
+			sep,
 			cmdItem("Open…", "prompt_open"),
 			cmdItem("Open Folder…", "prompt_open_folder"),
 			subMenu("Open Recent", recent...),
 			cmdItem("Reopen Closed File", "reopen_last_file"),
+			sep,
+			cmdItem("Add Folder to Workspace…", "prompt_add_folder"),
+			cmdItem("Duplicate Workspace", "duplicate_workspace"),
+			cmdItem("Close Folder", "close_folder"),
 			sep,
 			cmdItem("Save", "save"),
 			cmdItem("Save As…", "prompt_save_as"),
@@ -105,8 +117,11 @@ func (a *App) menuSpec() []menuItem {
 			cmdItem("Reveal in Finder", "reveal_in_finder"),
 			cmdItem("Revert File", "revert_file"),
 			sep,
+			cmdItem("Move File to New Window", "move_to_new_window"),
+			sep,
 			cmdItem("Close File", "close"),
 			cmdItem("Close All Files", "close_all"),
+			cmdItem("Close Window", "close_window"),
 		),
 		subMenu("Edit",
 			cmdItem("Undo", "undo"),
@@ -318,9 +333,20 @@ func (a *App) installMenu() {
 		if os.Getenv("INKS_DEBUG") != "" {
 			fmt.Fprintf(os.Stderr, "[menu] fire %d → %s %v\n", id, it.cmd, it.args)
 		}
-		a.Do(func() {
-			a.focusEditor = !strings.HasPrefix(it.cmd, "show_")
-			a.run(it.cmd, it.args)
+		// Commands go to the focused window; with none open, a new one.
+		s := a.Shared
+		s.Do(func() {
+			t := s.active()
+			if t == nil {
+				t = s.NewWindow(nil)
+				if it.cmd == "new_window" || it.cmd == "new_file" {
+					return
+				}
+			}
+			t.Do(func() {
+				t.focusEditor = !strings.HasPrefix(it.cmd, "show_")
+				t.run(it.cmd, it.args)
+			})
 		})
 	})
 }

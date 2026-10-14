@@ -2,6 +2,7 @@ package ui
 
 import (
 	"image"
+	"sync/atomic"
 
 	"encoding/json"
 	"gioui.org/io/key"
@@ -42,8 +43,9 @@ type Doc struct {
 	lastClick      time.Time
 	clicks         int
 	blink          time.Time
-	asking         bool // a "changed on disk" prompt is open
-	preview        bool // transient tab from a side bar click
+	asking         bool         // a "changed on disk" prompt is open
+	preview        bool         // transient tab from a side bar click
+	inval          atomic.Value // func(): redraws the window showing the document
 
 	ID        int
 	pts       *pointIndex
@@ -98,7 +100,12 @@ func newDoc(text, path string, s *settings.Settings, notify func()) *Doc {
 	if s.Bool("detect_indentation") {
 		d.detectIndentation()
 	}
-	d.hl = syntax.NewHighlighter(notify)
+	d.setInvalidate(notify)
+	d.hl = syntax.NewHighlighter(func() {
+		if f, ok := d.inval.Load().(func()); ok && f != nil {
+			f()
+		}
+	})
 	d.trackEdits()
 	d.blink = time.Now()
 	return d
@@ -326,4 +333,12 @@ func diffEdit(b *buffer.Buffer, cur, next string) (buffer.Edit, bool) {
 		s--
 	}
 	return buffer.Edit{Start: b.PosAt(p), End: b.PosAt(len(cur) - s), Text: next[p : len(next)-s]}, true
+}
+
+// setInvalidate points background redraws (highlighting) at the window now
+// showing the document.
+func (d *Doc) setInvalidate(f func()) {
+	if f != nil {
+		d.inval.Store(f)
+	}
 }
