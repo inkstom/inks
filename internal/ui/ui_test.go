@@ -191,8 +191,15 @@ func TestSessionMigration(t *testing.T) {
 	}
 	sh := &Shared{recent: []string{"x"}, recentFolders: []string{"/f"}}
 	sh.saveSession() // no windows: writes an empty window list
+	if prev, err := os.ReadFile(filepath.Join(dir, "Local", "Session.previous.json")); err != nil || string(prev) != old {
+		t.Fatalf("previous session not kept: %v %q", err, prev)
+	}
+	sh.quitting = true
+	sh.recentFolders = []string{"/changed"}
+	sh.saveSession() // ignored while quitting
 	s = loadSession()
 	if s == nil || s.Version != 3 || len(s.Windows) != 0 || s.RecentFolders[0] != "/f" {
+		// "/f", not "/changed": saving stops once quitting.
 		t.Fatalf("v3 session: %+v", s)
 	}
 }

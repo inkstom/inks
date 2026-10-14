@@ -49,6 +49,11 @@ type Shared struct {
 	windows []*App
 	focused *App
 	nextWin int
+	// quitting is set once the app is quitting: windows then close on their
+	// own and must not shrink the saved session.
+	quitting bool
+	// backedUp: this run's first save kept the previous session as a backup.
+	backedUp bool
 
 	// Test is handed to the first window (INKS_SELFTEST).
 	Test *TestHooks
@@ -188,6 +193,9 @@ func (s *Shared) windowClosed(a *App) {
 			s.focused = s.windows[len(s.windows)-1]
 		}
 	}
+	if s.quitting {
+		return
+	}
 	for _, d := range a.allDocs() {
 		d.hl.Close()
 		s.py.event("on_close", d, nil, nil)
@@ -273,6 +281,7 @@ func (s *Shared) onTerminate() bool {
 		time.Sleep(5 * time.Millisecond)
 	}
 	s.saveSession()
+	s.quitting = true
 	s.mu.Unlock()
 	return true
 }
@@ -280,6 +289,7 @@ func (s *Shared) onTerminate() bool {
 // quit saves the session and ends the app.
 func (s *Shared) quit() {
 	s.saveSession()
+	s.quitting = true
 	macmenu.Terminate()
 }
 
@@ -336,8 +346,16 @@ func loadSession() *appSession {
 
 // saveSession writes every window's state. Call with mu held.
 func (s *Shared) saveSession() {
-	if os.Getenv("INKS_NO_SESSION") != "" {
+	if os.Getenv("INKS_NO_SESSION") != "" || s.quitting {
 		return
+	}
+	if !s.backedUp {
+		// Keep the previous run's session (unsaved text included) once, so
+		// closing windows by mistake can't lose it: Local/Session.previous.json.
+		s.backedUp = true
+		if old, err := os.ReadFile(sessionPath()); err == nil {
+			_ = os.WriteFile(filepath.Join(filepath.Dir(sessionPath()), "Session.previous.json"), old, 0o600)
+		}
 	}
 	as := appSession{Version: 3, Recent: s.recent, RecentFolders: s.recentFolders}
 	for _, w := range s.windows {
