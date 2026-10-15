@@ -306,6 +306,9 @@ func (a *App) checkpointLoop() {
 		n++
 		a.Do(func() {
 			a.checkDisk()
+			if a.tree.checkStale() {
+				a.fileCache = nil // Goto Anything lists files afresh too
+			}
 			if n%4 == 1 {
 				a.refreshGit()
 			}

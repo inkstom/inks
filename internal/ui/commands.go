@@ -406,6 +406,11 @@ func (a *App) registerCommands() {
 
 	// Find in files
 	reg("show_find_in_files", "Find: Find in Files…", func(map[string]any) { a.search.show() })
+	reg("refresh_folders", "View: Refresh Folders", func(map[string]any) {
+		a.tree.refresh()
+		a.fileCache = nil
+		a.refreshGit()
+	})
 	reg("show_folders", "View: Show Folders", func(map[string]any) {
 		a.sideMode = "folders"
 		a.setSidebar(true)

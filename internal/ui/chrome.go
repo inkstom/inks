@@ -238,6 +238,7 @@ type Tree struct {
 	a        *App
 	expanded map[string]bool
 	cache    map[string][]os.DirEntry
+	mtimes   map[string]time.Time // folder modification times when listed
 	scroll   int
 	rowTags  []rowTag
 
@@ -248,12 +249,15 @@ type Tree struct {
 type rowTag struct{ i int }
 
 func newTree(a *App) *Tree {
-	return &Tree{a: a, expanded: map[string]bool{}, cache: map[string][]os.DirEntry{}}
+	return &Tree{a: a, expanded: map[string]bool{}, cache: map[string][]os.DirEntry{}, mtimes: map[string]time.Time{}}
 }
 
 func (t *Tree) entries(dir string) []os.DirEntry {
 	if e, ok := t.cache[dir]; ok {
 		return e
+	}
+	if st, err := os.Stat(dir); err == nil {
+		t.mtimes[dir] = st.ModTime()
 	}
 	list, _ := os.ReadDir(dir)
 	var out []os.DirEntry
@@ -328,7 +332,26 @@ func (t *Tree) rows() []treeRow {
 }
 
 // refresh drops cached listings so the tree re-reads the disk.
-func (t *Tree) refresh() { t.cache = map[string][]os.DirEntry{} }
+func (t *Tree) refresh() {
+	t.cache = map[string][]os.DirEntry{}
+	t.mtimes = map[string]time.Time{}
+}
+
+// checkStale re-reads folders whose contents changed on disk (a file was
+// added, removed or renamed in them; that changes the folder's modification
+// time). It reports whether anything changed.
+func (t *Tree) checkStale() bool {
+	changed := false
+	for dir := range t.cache {
+		st, err := os.Stat(dir)
+		if err != nil || !st.ModTime().Equal(t.mtimes[dir]) {
+			delete(t.cache, dir)
+			delete(t.mtimes, dir)
+			changed = true
+		}
+	}
+	return changed
+}
 
 type sidebarScrollTag struct{}
 
@@ -450,6 +473,12 @@ func (a *App) layoutSidebar(gtx layout.Context) layout.Dimensions {
 				arrow = "▾"
 			}
 			a.fonts.Draw(gtx.Ops, arrow, x, base, c.SidebarDim, a.fonts.UI, px)
+		}
+		// The file-type icon, then the name.
+		iconX := x + gtx.Dp(14)
+		if a.set.Bool("sidebar_icons") {
+			a.fonts.drawIcon(gtx.Ops, r.name, r.isDir, t.expanded[r.path], !a.scheme.Dark, iconX, base, c.SidebarDim, px)
+			x += gtx.Dp(18)
 		}
 		name := a.fonts.Elide(r.name, a.fonts.UI, px, w-x-gtx.Dp(40))
 		fg := c.SidebarFg

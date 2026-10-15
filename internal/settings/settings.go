@@ -50,6 +50,8 @@ const DefaultText = `// inks default settings. Put your changes in the User sett
 	"ensure_newline_at_eof_on_save": false,
 	"hot_exit": true,
 	"show_side_bar": true,
+	// File-type icons in the side bar and Search results.
+	"sidebar_icons": true,
 	"folder_exclude_patterns": [".git", ".svn", ".hg", "CVS", ".Trash", ".terraform", "node_modules", "__pycache__", ".venv"],
 	"file_exclude_patterns": ["*.pyc", "*.o", "*.so", "*.dylib", "*.class", ".DS_Store", "*.tfstate", "*.tfstate.backup"],
 	"binary_file_patterns": ["*.jpg", "*.jpeg", "*.png", "*.gif", "*.ico", "*.pdf", "*.zip", "*.gz", "*.ttf", "*.woff", "*.woff2"]

@@ -130,6 +130,10 @@ They're in **Edit › Text Tools**, or type `Text:` in the Command Palette. They
 - Line tools: sort (natural, numeric, reverse), unique, `uniq -c`, `cut`, `tr`, `sed s/a/b/g`, keep or remove lines matching, join lines with a separator, remove blank lines, number lines.
 - **Filter Through Command… (⌥⌘X):** pipes the selection through any shell command, for example `sort | uniq -c | sort -rn`, `awk -F, '{print $2}'`, `jq .` or `column -t`.
 
+## Side bar
+
+Files and folders show the icons of the File & Folder Icons extension for VS Code (file-icons), colored by type; `"sidebar_icons": false` turns them off. The listing follows the disk: files added, removed or renamed by other programs appear within a couple of seconds.
+
 ## Git
 
 In a git repository, the gutter marks lines added, changed or deleted since the last commit. The side bar colors files by status (M, A, U, D), and the status bar shows the branch.
@@ -219,7 +223,7 @@ internal/settings/    defaults and the user settings file
 
 ## Testing
 
-`make test` runs `go vet` and the unit tests. `make selftest` opens a window and drives the real app through 53 scripted checks: editing, search and replace, the menu bar, git, builds, layouts, folding, macros, plugins and more. It uses a throwaway profile and exits non-zero on failure.
+`make test` runs `go vet` and the unit tests. `make selftest` opens a window and drives the real app through 56 scripted checks: editing, search and replace, the menu bar, git, builds, layouts, folding, macros, plugins and more. It uses a throwaway profile and exits non-zero on failure.
 
 Useful environment variables:
 
@@ -247,4 +251,4 @@ Both need a macOS [act_runner](https://docs.gitea.com/usage/actions/act-runner) 
 
 ## License
 
-MIT, see [LICENSE](LICENSE).
+MIT, see [LICENSE](LICENSE). The side bar icons and their fonts are by their authors under the MIT, ISC and SIL OFL licenses; see [internal/icons/LICENSES.md](internal/icons/LICENSES.md).

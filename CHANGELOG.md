@@ -1,7 +1,9 @@
 # Changelog
 
-## Unreleased
+## 1.1.0 — 2026-10-15
 
+- **File icons** in the side bar and in Search results: the icon set of the File & Folder Icons extension for VS Code (file-icons), with about 2,200 extensions and 770 file names. Turn it off with `"sidebar_icons": false`.
+- **The side bar stays current:** files and folders added, removed or renamed on disk show up within a couple of seconds, and Goto Anything lists them too. **View: Refresh Folders** forces a re-read.
 - **Multiple windows:** File › New Window (⇧⌘N), Close Window (⇧⌘W), Add Folder to Workspace, Duplicate Workspace, Close Folder, and recent folders in Open Recent. Open Folder uses a new window when the current one already has a folder.
 - **Tabs:** drag to reorder or to move to another split group, and drag out of the window to open the file in a new window under the pointer. Right-click a tab for close actions, Open in New Window, splitting, moving to another window, copying its path and Reveal in Finder.
 - Opening a file that's already open in another window switches to it there.

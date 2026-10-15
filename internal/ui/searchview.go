@@ -929,6 +929,10 @@ func (s *SearchView) Layout(gtx layout.Context, top int) {
 			if f.path == "" {
 				name = f.rel
 			}
+			if a.set.Bool("sidebar_icons") {
+				a.fonts.drawIcon(gtx.Ops, name, false, false, !a.scheme.Dark, nx, base, c.SidebarDim, px)
+				nx += gtx.Dp(18)
+			}
 			countText := fmt.Sprint(len(f.matches))
 			cw := a.fonts.Width(countText, a.fonts.UI, small) + gtx.Dp(10)
 			right := w - pad - cw

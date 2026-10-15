@@ -680,6 +680,33 @@ func SelfTest(dir string) *TestHooks {
 			return expect(a.dialogDir("/elsewhere") == dir, "dialogDir: %q", a.dialogDir("/elsewhere"))
 		},
 		func(a *App) error {
+			// The side bar notices files added and removed on disk.
+			if len(a.folders) == 0 {
+				a.addFolder(dir)
+			}
+			root := a.folders[0]
+			has := func(name string) bool {
+				for _, r := range a.tree.rows() {
+					if r.name == name {
+						return true
+					}
+				}
+				return false
+			}
+			has("") // list the folder once
+			p := filepath.Join(root, "appeared-later.txt")
+			_ = os.WriteFile(p, []byte("x"), 0o644)
+			later := time.Now().Add(2 * time.Second) // make sure the folder's mtime moves
+			_ = os.Chtimes(root, later, later)
+			if !a.tree.checkStale() || !has("appeared-later.txt") {
+				return fmt.Errorf("new file not listed")
+			}
+			_ = os.Remove(p)
+			_ = os.Chtimes(root, later.Add(time.Second), later.Add(time.Second))
+			a.tree.checkStale()
+			return expect(!has("appeared-later.txt"), "removed file still listed")
+		},
+		func(a *App) error {
 			// Menu shortcuts reflect key bindings.
 			k, m := menuKey(a.keymap.SingleKeyFor("show_find_in_files", nil))
 			if err := expect(k == "f" && m == macmenuCmdShift, "menu key: %q %x", k, m); err != nil {

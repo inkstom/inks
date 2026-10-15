@@ -11,6 +11,8 @@ import (
 	"gioui.org/op/paint"
 	"gioui.org/text"
 	"golang.org/x/image/math/fixed"
+
+	"inks/internal/icons"
 )
 
 // Fonts shapes and paints text. System fonts (e.g. Menlo) are available by
@@ -23,7 +25,8 @@ type Fonts struct {
 }
 
 func newFonts(mono string) *Fonts {
-	f := &Fonts{Shaper: text.NewShaper(text.WithCollection(gofont.Collection()))}
+	coll := append(gofont.Collection(), icons.Faces()...)
+	f := &Fonts{Shaper: text.NewShaper(text.WithCollection(coll))}
 	f.SetMono(mono)
 	f.UI = font.Font{Typeface: "Helvetica Neue, Go"}
 	return f
@@ -154,4 +157,19 @@ func colorMaterial(ops *op.Ops, c color.NRGBA) op.CallOp {
 	m := op.Record(ops)
 	paint.ColorOp{Color: c}.Add(ops)
 	return m.Stop()
+}
+
+// drawIcon paints the file-type icon for a name with its left edge at x on
+// baseline y, sized for text of px pixels, and returns its advance.
+func (f *Fonts) drawIcon(ops *op.Ops, name string, dir, expanded, light bool, x, y int, fallback color.NRGBA, px int) int {
+	ic, ok := icons.For(name, dir, expanded, light)
+	if !ok {
+		return 0
+	}
+	col := ic.Color
+	if col.A == 0 {
+		col = fallback
+	}
+	f.Draw(ops, string(ic.Rune), x, y+px/12, col, ic.Font, px*9/8)
+	return px * 9 / 8
 }
