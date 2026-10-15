@@ -87,6 +87,7 @@ func NewShared() *Shared {
 func (s *Shared) Start(open []string) *App {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	macmenu.DisableWindowTabbing() // before the first window exists
 	var first *App
 	if sess := loadSession(); sess != nil {
 		s.recent, s.recentFolders, s.lastDir = sess.Recent, sess.RecentFolders, sess.LastDir

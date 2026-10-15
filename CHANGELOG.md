@@ -11,6 +11,7 @@
 - **Open and Save dialogs** start in the folder you last used, remembered across launches.
 - **More classic key bindings:** goto definition (F12), goto symbol in project (⇧⌘R), goto word (⌘;), switch folder (⌃⌘P), bracket jump and selection (⌃M, ⇧⌘M), expand to indentation (⇧⌘J) and scope (⇧⌘Space), paste and indent (⇧⌘V), paste from history (⌘K ⌘V), block comments (⌥⌘/), transpose (⌃T), marks (⌘K ⌘Space/A/X), hard wrap (⌥⌘Q), find under caret (⌥⌘G), replace next (⌥⌘E), center caret (⌘K ⌘C), scroll lines (⌃⌥↑↓), header/source switch (⌥⌘↑), 4 columns and 3 rows, and distraction-free mode (⌃⇧⌘F).
 - Fixed: after a document was restored, the first keystroke could move the caret to the start of the line.
+- Fixed: on Macs set to prefer tabs (or with View › Show Tab Bar on), macOS added its own title-only tab bar under the title bar and merged new windows into it as tabs. inks now opts out of macOS window tabbing, since it has its own tabs.
 
 ## 1.0.0 — 2026-10-13
 

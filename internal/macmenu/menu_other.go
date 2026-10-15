@@ -14,3 +14,6 @@ func installReopen()                       {}
 func Popup(items []string, done func(int)) { done(-1) }
 
 func AcceptFirstMouse() {}
+
+func DisableWindowTabbing() {}
+func SetupWindow(uintptr)   {}

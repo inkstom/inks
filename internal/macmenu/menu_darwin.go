@@ -12,12 +12,15 @@ void inks_place_window_at_mouse(uintptr_t view);
 void inks_terminate(void);
 void inks_install_reopen(void);
 void inks_accept_first_mouse(void);
+void inks_disable_window_tabbing(void);
+void inks_window_setup(uintptr_t view, int debug);
 void inks_popup(const char *json, int len, int token);
 */
 import "C"
 
 import (
 	"encoding/json"
+	"os"
 	"sync"
 	"unsafe"
 )
@@ -101,3 +104,20 @@ func inksPopupDone(tok, picked C.int) {
 
 // AcceptFirstMouse makes clicks in inactive windows act immediately.
 func AcceptFirstMouse() { C.inks_accept_first_mouse() }
+
+// DisableWindowTabbing turns off macOS window tabs app-wide (inks has its
+// own); call it before any window is created.
+func DisableWindowTabbing() { C.inks_disable_window_tabbing() }
+
+// SetupWindow keeps a window out of macOS tab groups and hides a native
+// tab bar if one is showing. INKS_DEBUG_TABS logs the before/after state.
+func SetupWindow(view uintptr) {
+	C.inks_window_setup(C.uintptr_t(view), b2i(os.Getenv("INKS_DEBUG_TABS") != ""))
+}
+
+func b2i(b bool) C.int {
+	if b {
+		return 1
+	}
+	return 0
+}

@@ -231,3 +231,32 @@ void inks_accept_first_mouse(void) {
 		}
 	});
 }
+
+// inks has its own tabs: opt out of macOS window tabbing, which otherwise
+// adds a second, title-only tab bar when the user prefers tabs ("Prefer
+// tabs when opening documents: Always", or View › Show Tab Bar).
+void inks_disable_window_tabbing(void) {
+	dispatch_async(dispatch_get_main_queue(), ^{
+		NSWindow.allowsAutomaticWindowTabbing = NO;
+	});
+}
+
+void inks_window_setup(uintptr_t viewRef, int debug) {
+	dispatch_async(dispatch_get_main_queue(), ^{
+		NSView *view = (__bridge NSView *)(void *)viewRef;
+		NSWindow *w = view.window;
+		if (w == nil) {
+			return;
+		}
+		if (debug) {
+			NSLog(@"[tabs] before: tabbingMode=%ld tabBarVisible=%d tabbedWindows=%lu", (long)w.tabbingMode, w.tabGroup.isTabBarVisible, (unsigned long)w.tabbedWindows.count);
+		}
+		w.tabbingMode = NSWindowTabbingModeDisallowed;
+		if (w.tabGroup.isTabBarVisible) {
+			[w toggleTabBar:nil];
+		}
+		if (debug) {
+			NSLog(@"[tabs] after: tabbingMode=%ld tabBarVisible=%d", (long)w.tabbingMode, w.tabGroup.isTabBarVisible);
+		}
+	});
+}

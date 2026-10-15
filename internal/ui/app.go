@@ -269,6 +269,7 @@ func (a *App) Run() {
 		case app.AppKitViewEvent:
 			if e.View != 0 {
 				a.view = e.View
+				macmenu.SetupWindow(e.View)
 				if a.atMouse {
 					a.atMouse = false
 					macmenu.PlaceWindowAtMouse(e.View)
