@@ -3,11 +3,15 @@
 package platform
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
+	"time"
 )
 
 func osa(script string) (string, error) {
@@ -126,10 +130,10 @@ func HasITerm() bool {
 // ShellQuote quotes s for a POSIX shell.
 func ShellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
 
-// OpenTerminal opens a terminal tab in dir and, if command isn't empty,
-// runs it there. app is "iTerm" or "Terminal" ("" picks iTerm2 when it is
-// installed). The tab opens in the front window, or a new window.
-func OpenTerminal(dir, command, app string) error {
+// OpenTerminal opens a terminal window in dir (a tab in the front window
+// with newTab, iTerm2 only) and, if command isn't empty, runs it there. app
+// is "iTerm" or "Terminal" ("" picks iTerm2 when it is installed).
+func OpenTerminal(dir, command, app string, newTab bool) error {
 	line := "cd " + ShellQuote(dir)
 	if command != "" {
 		line += " && " + command
@@ -142,16 +146,22 @@ func OpenTerminal(dir, command, app string) error {
 	}
 	var script string
 	if app == "iTerm" {
+		open := "set w to (create window with default profile)"
+		if newTab {
+			open = `if (count of windows) = 0 then
+		set w to (create window with default profile)
+	else
+		set w to current window
+		tell w to create tab with default profile
+	end if`
+		}
 		script = `tell application id "com.googlecode.iterm2"
 	activate
-	if (count of windows) = 0 then
-		create window with default profile
-	else
-		tell current window to create tab with default profile
-	end if
-	tell current session of current window to write text ` + quote(line) + `
+	` + open + `
+	tell current session of w to write text ` + quote(line) + `
 end tell`
 	} else {
+		// do script without a target opens a new window.
 		script = `tell application "Terminal"
 	activate
 	do script ` + quote(line) + `
@@ -159,4 +169,54 @@ end tell`
 	}
 	_, err := osa(script)
 	return err
+}
+
+var (
+	hasMark  = regexp.MustCompile(`<inks-has>([^<]*)</inks-has>`)
+	pathMark = regexp.MustCompile(`<inks-path>([^<]*)</inks-path>`)
+)
+
+// ShellLookup asks the user's shell, started the way a new terminal starts
+// it, which of names it can run (programs, aliases or functions) and what
+// its PATH is. Apps opened from the Dock get a minimal PATH, so only the
+// shell knows. It can take a few seconds.
+func ShellLookup(names []string) (path string, found map[string]bool, err error) {
+	sh := os.Getenv("SHELL")
+	if sh == "" {
+		sh = "/bin/zsh"
+	}
+	var q []string
+	for _, n := range names {
+		q = append(q, ShellQuote(n))
+	}
+	script := `for c in ` + strings.Join(q, " ") + `; do command -v "$c" >/dev/null 2>&1 && printf '\n<inks-has>%s</inks-has>\n' "$c"; done; printf '\n<inks-path>%s</inks-path>\n' "$PATH"`
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	out, runErr := exec.CommandContext(ctx, sh, "-ilc", script).Output()
+	m := pathMark.FindSubmatch(out)
+	if m == nil {
+		if runErr == nil {
+			runErr = errors.New("no PATH in the shell's output")
+		}
+		return "", nil, runErr
+	}
+	found = map[string]bool{}
+	for _, h := range hasMark.FindAllSubmatch(out, -1) {
+		found[string(h[1])] = true
+	}
+	return string(m[1]), found, nil
+}
+
+// FindInPath reports whether name is an executable file in one of the
+// folders of path (a PATH value).
+func FindInPath(name, path string) bool {
+	for _, dir := range filepath.SplitList(path) {
+		if dir == "" {
+			continue
+		}
+		if st, err := os.Stat(filepath.Join(dir, name)); err == nil && !st.IsDir() && st.Mode()&0o111 != 0 {
+			return true
+		}
+	}
+	return false
 }

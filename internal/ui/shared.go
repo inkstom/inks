@@ -47,6 +47,7 @@ type Shared struct {
 
 	pasteHistory []string       // recent copies (Paste from History)
 	fileClip     *fileClipboard // files cut or copied in the side bar
+	tools        toolCheck      // which terminal commands are installed
 	lastDir      string         // the folder last used in an Open or Save dialog
 	savedSig     string         // what the session file last captured (see loop)
 
@@ -123,6 +124,7 @@ func (s *Shared) Start(open []string) *App {
 	}
 	go s.loop()
 	go s.listenCLI()
+	first.checkTools()
 	return first
 }
 

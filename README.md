@@ -151,7 +151,12 @@ Files and folders show the icons of the File & Folder Icons extension for VS Cod
 Right-click a file, a folder, or the space below them for:
 
 - **Open**, Open to the Side, Open in New Window, Open in Default App, Reveal in Finder
-- **Open Terminal Here**, **Open Claude Code Here**, **Open Codex Here**: a new iTerm2 tab (or Terminal, if iTerm2 isn't installed) in that folder, running `claude` or `codex`. Settings: `"terminal_app"` (`"iTerm"` or `"Terminal"`), `"claude_command"`, `"codex_command"`. These are also in Tools and the Command Palette, for the current file's folder.
+- **Open Terminal Here**, **Open Claude Code Here**, **Open Codex Here**: a new iTerm2 window (or Terminal, if iTerm2 isn't installed) in that folder, running `claude` or `codex`. If your shell can't find one of them, the item is greyed out and marked "not found". Settings:
+  - `"terminal_app"`: `"iTerm"` or `"Terminal"`
+  - `"terminal_new_tab": true`: use a tab in iTerm2's front window instead of a new window
+  - `"claude_command"`, `"codex_command"`: the command to run, which can be a full path
+
+  These are also in Tools and the Command Palette, for the current file's folder.
 - New File…, New Folder…, Rename…, Delete (to the Trash), Cut, Copy, Paste, Duplicate
 - Copy Path, Copy Relative Path, Copy Name, Find in Folder…, Add or Remove Folder from Workspace, Expand All, Collapse All, Refresh
 

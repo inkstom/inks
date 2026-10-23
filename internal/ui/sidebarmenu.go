@@ -86,8 +86,8 @@ func (a *App) treeMenu(r *treeRow) {
 			menuSep,
 			menuEntry{label: "Reveal in Finder", fn: func() { go platform.Reveal(orDir(target, dir)) }},
 			menuEntry{label: "Open Terminal Here", fn: func() { a.terminalHere(dir, "") }},
-			menuEntry{label: "Open Claude Code Here", fn: func() { a.terminalHere(dir, a.cliCommand("claude_command", "claude")) }},
-			menuEntry{label: "Open Codex Here", fn: func() { a.terminalHere(dir, a.cliCommand("codex_command", "codex")) }},
+			a.toolEntry("Open Claude Code Here", dir, a.cliCommand("claude_command", "claude")),
+			a.toolEntry("Open Codex Here", dir, a.cliCommand("codex_command", "codex")),
 			menuSep)
 	}
 	if r != nil && r.isDir {
@@ -161,16 +161,94 @@ func (a *App) cliCommand(key, def string) string {
 	return def
 }
 
-// terminalHere opens a terminal tab in dir, running command if given.
+// toolEntry is a menu item that runs command in a terminal in dir, greyed
+// out when the command isn't installed.
+func (a *App) toolEntry(label, dir, command string) menuEntry {
+	if a.commandMissing(command) {
+		return menuEntry{label: label + " (" + commandName(command) + " not found)", disabled: true}
+	}
+	return menuEntry{label: label, fn: func() { a.terminalHere(dir, command) }}
+}
+
+// toolCheck caches which commands the user's shell can run (see
+// platform.ShellLookup), refreshed in the background.
+type toolCheck struct {
+	known   bool
+	path    string          // the shell's PATH
+	found   map[string]bool // commands it found, aliases included
+	at      time.Time
+	running bool
+}
+
+// commandName is the program a command line runs (its first word).
+func commandName(command string) string {
+	if f := strings.Fields(command); len(f) > 0 {
+		return f[0]
+	}
+	return ""
+}
+
+// checkTools asks the shell about the terminal commands in the background,
+// unless it did recently.
+func (a *App) checkTools() {
+	s := a.Shared
+	if s.tools.running || time.Since(s.tools.at) < 30*time.Second {
+		return
+	}
+	s.tools.running = true
+	names := []string{commandName(a.cliCommand("claude_command", "claude")), commandName(a.cliCommand("codex_command", "codex"))}
+	go func() {
+		path, found, err := platform.ShellLookup(names)
+		s.Do(func() {
+			s.tools.running = false
+			s.tools.at = time.Now()
+			if err == nil {
+				s.tools.known, s.tools.path, s.tools.found = true, path, found
+			}
+		})
+	}()
+}
+
+// commandMissing reports whether command surely can't run: the shell
+// didn't find it when last asked, and it isn't in the shell's PATH now
+// either (so one installed since shows up at once). Until the shell has
+// answered, nothing counts as missing.
+func (a *App) commandMissing(command string) bool {
+	a.checkTools()
+	name := commandName(command)
+	switch {
+	case name == "":
+		return false
+	case strings.Contains(name, "/"):
+		if strings.HasPrefix(name, "~/") {
+			if home, err := os.UserHomeDir(); err == nil {
+				name = filepath.Join(home, name[2:])
+			}
+		}
+		st, err := os.Stat(name)
+		return err != nil || st.IsDir()
+	case !a.tools.known:
+		return false
+	}
+	return !a.tools.found[name] && !platform.FindInPath(name, a.tools.path)
+}
+
+// terminalHere opens a terminal window in dir, running command if given.
 func (a *App) terminalHere(dir, command string) {
+	if command != "" && a.commandMissing(command) {
+		name := commandName(command)
+		go platform.Message(name+" isn't installed", "inks can't find "+name+" in your shell. Install it, or set its full path in Settings (\"claude_command\" or \"codex_command\").")
+		return
+	}
 	app := a.set.String("terminal_app") // "iTerm", "Terminal" or "" (auto)
+	newTab := a.set.Bool("terminal_new_tab")
 	what := "a terminal"
 	if command != "" {
 		what = command
 	}
 	a.setStatus("Opening "+what+" in "+tildify(dir)+"…", 3*time.Second)
 	go func() {
-		if err := platform.OpenTerminal(dir, command, app); err != nil {
+		if err := platform.OpenTerminal(dir, command, app, newTab); err != nil {
 			a.Do(func() {
 				a.setStatus("Couldn't open the terminal: "+err.Error()+" (allow inks to control it in System Settings › Privacy & Security › Automation)", 10*time.Second)
 			})

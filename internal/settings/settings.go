@@ -54,7 +54,10 @@ const DefaultText = `// inks default settings. Put your changes in the User sett
 	"sidebar_icons": true,
 	// Right-click › Open Terminal / Claude Code / Codex Here: the terminal
 	// ("iTerm", "Terminal", or "" for iTerm2 when installed) and commands.
+	// Each opens a new window; terminal_new_tab uses a tab in iTerm2's front
+	// window instead.
 	"terminal_app": "",
+	"terminal_new_tab": false,
 	"claude_command": "claude",
 	"codex_command": "codex",
 	"folder_exclude_patterns": [".git", ".svn", ".hg", "CVS", ".Trash", ".terraform", "node_modules", "__pycache__", ".venv"],
