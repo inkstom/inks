@@ -77,9 +77,18 @@ var (
 	popupFuncs = map[int]func(int){}
 )
 
-// Popup shows a context menu at the pointer. "" makes a separator. done
-// gets the chosen index, or -1, on the main thread.
-func Popup(items []string, done func(int)) {
+// PopupItem is one entry of a context menu; an empty Title is a separator.
+// Key and Mods only display a shortcut.
+type PopupItem struct {
+	Title    string `json:"title"`
+	Key      string `json:"key,omitempty"`
+	Mods     int    `json:"mods,omitempty"`
+	Disabled bool   `json:"disabled,omitempty"`
+}
+
+// Popup shows a context menu at the pointer. done gets the chosen index,
+// or -1, on the main thread.
+func Popup(items []PopupItem, done func(int)) {
 	popupMu.Lock()
 	popupSeq++
 	tok := popupSeq

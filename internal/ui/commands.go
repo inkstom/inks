@@ -406,6 +406,13 @@ func (a *App) registerCommands() {
 
 	// Find in files
 	reg("show_find_in_files", "Find: Find in Files…", func(map[string]any) { a.search.show() })
+	reg("terminal_here", "Terminal: Open Terminal Here", func(map[string]any) { a.terminalHere(a.defaultDir(), "") })
+	reg("claude_here", "Terminal: Open Claude Code Here", func(map[string]any) {
+		a.terminalHere(a.defaultDir(), a.cliCommand("claude_command", "claude"))
+	})
+	reg("codex_here", "Terminal: Open Codex Here", func(map[string]any) {
+		a.terminalHere(a.defaultDir(), a.cliCommand("codex_command", "codex"))
+	})
 	reg("refresh_folders", "View: Refresh Folders", func(map[string]any) {
 		a.tree.refresh()
 		a.fileCache = nil

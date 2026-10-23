@@ -170,6 +170,10 @@ func (f *Fonts) drawIcon(ops *op.Ops, name string, dir, expanded, light bool, x,
 	if col.A == 0 {
 		col = fallback
 	}
-	f.Draw(ops, string(ic.Rune), x, y+px/12, col, ic.Font, px*9/8)
-	return px * 9 / 8
+	// Icons differ in width: center each in a fixed slot so names line up.
+	size := px * 9 / 8
+	slot := size
+	w := f.Width(string(ic.Rune), ic.Font, size)
+	f.Draw(ops, string(ic.Rune), x+(slot-w)/2, y+px/12, col, ic.Font, size)
+	return slot
 }

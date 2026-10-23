@@ -707,6 +707,43 @@ func SelfTest(dir string) *TestHooks {
 			return expect(!has("appeared-later.txt"), "removed file still listed")
 		},
 		func(a *App) error {
+			// Side bar file operations: duplicate, copy/cut and paste, rename
+			// an open file, find in folder.
+			root := filepath.Join(dir, "ops")
+			_ = os.MkdirAll(filepath.Join(root, "dst"), 0o755)
+			src := filepath.Join(root, "note.txt")
+			_ = os.WriteFile(src, []byte("note\n"), 0o644)
+			a.duplicate(src)
+			if _, err := os.Stat(filepath.Join(root, "note copy.txt")); err != nil {
+				return fmt.Errorf("duplicate: %v", err)
+			}
+			a.fileClip = &fileClipboard{paths: []string{src}}
+			a.pasteFiles(filepath.Join(root, "dst"))
+			if _, err := os.Stat(filepath.Join(root, "dst", "note.txt")); err != nil {
+				return fmt.Errorf("copy+paste: %v", err)
+			}
+			d := a.openPath(src)
+			a.fileClip = &fileClipboard{paths: []string{src}, cut: true}
+			a.pasteFiles(filepath.Join(root, "dst")) // name taken: becomes "note copy.txt"
+			moved := filepath.Join(root, "dst", "note copy.txt")
+			if _, err := os.Stat(src); err == nil || d.Path != moved {
+				return fmt.Errorf("cut+paste: source still there or doc path %q", d.Path)
+			}
+			renamed := filepath.Join(root, "dst", "renamed.txt")
+			_ = os.Rename(moved, renamed)
+			a.pathMoved(moved, renamed)
+			if d.Path != renamed {
+				return fmt.Errorf("rename: doc path %q", d.Path)
+			}
+			if len(a.folders) == 0 {
+				a.addFolder(dir)
+			}
+			a.findInFolder(filepath.Join(a.folders[0], "ops"))
+			inc := a.search.include.Text()
+			a.sideMode = "folders"
+			return expect(inc == "ops/**", "find in folder include: %q", inc)
+		},
+		func(a *App) error {
 			// Menu shortcuts reflect key bindings.
 			k, m := menuKey(a.keymap.SingleKeyFor("show_find_in_files", nil))
 			if err := expect(k == "f" && m == macmenuCmdShift, "menu key: %q %x", k, m); err != nil {

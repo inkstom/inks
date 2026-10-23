@@ -201,13 +201,16 @@ void inks_popup(const char *json, int len, int token) {
 		NSMenu *menu = [[NSMenu alloc] initWithTitle:@""];
 		menu.autoenablesItems = NO;
 		NSInteger i = 0;
-		for (NSString *title in items) {
+		for (NSDictionary *it in items) {
+			NSString *title = it[@"title"] ?: @"";
 			if (title.length == 0) {
 				[menu addItem:[NSMenuItem separatorItem]];
 			} else {
-				NSMenuItem *mi = [[NSMenuItem alloc] initWithTitle:title action:@selector(pick:) keyEquivalent:@""];
+				NSMenuItem *mi = [[NSMenuItem alloc] initWithTitle:title action:@selector(pick:) keyEquivalent:it[@"key"] ?: @""];
+				mi.keyEquivalentModifierMask = [it[@"mods"] unsignedIntegerValue];
 				mi.target = t;
 				mi.tag = i;
+				mi.enabled = ![it[@"disabled"] boolValue];
 				[menu addItem:mi];
 			}
 			i++;

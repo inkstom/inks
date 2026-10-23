@@ -239,6 +239,7 @@ type Tree struct {
 	expanded map[string]bool
 	cache    map[string][]os.DirEntry
 	mtimes   map[string]time.Time // folder modification times when listed
+	selected string               // the row last clicked or right-clicked
 	scroll   int
 	rowTags  []rowTag
 
@@ -441,12 +442,19 @@ func (a *App) layoutSidebar(gtx layout.Context) layout.Dimensions {
 	event.Op(gtx.Ops, &a.sidebarScroll)
 	area.Pop()
 	for {
-		ev, ok := gtx.Event(pointer.Filter{Target: &a.sidebarScroll, Kinds: pointer.Scroll, ScrollY: pointer.ScrollRange{Min: -1 << 30, Max: 1 << 30}})
+		ev, ok := gtx.Event(pointer.Filter{Target: &a.sidebarScroll, Kinds: pointer.Scroll | pointer.Press, ScrollY: pointer.ScrollRange{Min: -1 << 30, Max: 1 << 30}})
 		if !ok {
 			break
 		}
 		if e, ok := ev.(pointer.Event); ok {
-			t.scroll += int(e.Scroll.Y)
+			switch {
+			case e.Kind == pointer.Scroll:
+				t.scroll += int(e.Scroll.Y)
+			case e.Buttons == pointer.ButtonSecondary:
+				// Right-click below the rows: the folder's menu.
+				t.selected = ""
+				a.treeMenu(nil)
+			}
 		}
 	}
 	maxScroll := max(0, len(rows)*rowH-(h-top))
@@ -465,6 +473,9 @@ func (a *App) layoutSidebar(gtx layout.Context) layout.Dimensions {
 		if r.path == active {
 			fill(gtx.Ops, rr, c.SidebarSel)
 		}
+		if r.path == t.selected && r.path != active {
+			stroke(gtx.Ops, rr.Inset(1), 0, 1, theme.Alpha(c.Accent, 0.8))
+		}
 		x := gtx.Dp(10) + r.depth*gtx.Dp(14)
 		base := y + rowH/2 + met.Ascent/2 - gtx.Dp(1)
 		if r.isDir {
@@ -474,12 +485,15 @@ func (a *App) layoutSidebar(gtx layout.Context) layout.Dimensions {
 			}
 			a.fonts.Draw(gtx.Ops, arrow, x, base, c.SidebarDim, a.fonts.UI, px)
 		}
-		// The file-type icon, then the name.
-		iconX := x + gtx.Dp(14)
+		// The file-type icon, then the name close beside it.
+		nameX := x + gtx.Dp(16)
 		if a.set.Bool("sidebar_icons") {
-			a.fonts.drawIcon(gtx.Ops, r.name, r.isDir, t.expanded[r.path], !a.scheme.Dark, iconX, base, c.SidebarDim, px)
-			x += gtx.Dp(18)
+			iconX := x + gtx.Dp(14)
+			if adv := a.fonts.drawIcon(gtx.Ops, r.name, r.isDir, t.expanded[r.path], !a.scheme.Dark, iconX, base, c.SidebarDim, px); adv > 0 {
+				nameX = iconX + adv + gtx.Dp(5)
+			}
 		}
+		x = nameX - gtx.Dp(16)
 		name := a.fonts.Elide(r.name, a.fonts.UI, px, w-x-gtx.Dp(40))
 		fg := c.SidebarFg
 		if r.root {
@@ -511,6 +525,12 @@ func (a *App) layoutSidebar(gtx layout.Context) layout.Dimensions {
 		event.Op(gtx.Ops, tag)
 		hit.Pop()
 		if e, ok := clicked(gtx, tag); ok {
+			t.selected = r.path
+			if e.Buttons == pointer.ButtonSecondary {
+				row := r
+				a.treeMenu(&row)
+				continue
+			}
 			if r.isDir {
 				t.expanded[r.path] = !t.expanded[r.path]
 			} else {

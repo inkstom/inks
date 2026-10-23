@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- **Side bar right-click menus** for files, folders and the empty space: open (to the side, in a new window, in the default app), reveal in Finder, **open a terminal, Claude Code or Codex in that folder** (iTerm2, or Terminal), new file and folder, rename, delete to the Trash, cut/copy/paste and duplicate files, copy path / relative path / name, find in folder, add or remove workspace folders, collapse all and refresh. The terminal commands are also in Tools and the Command Palette.
+- Side bar icons sit closer to the names, centered in a fixed slot so names line up.
+
 ## 1.1.0 — 2026-10-15
 
 - **File icons** in the side bar and in Search results: the icon set of the File & Folder Icons extension for VS Code (file-icons), with about 2,200 extensions and 770 file names. Turn it off with `"sidebar_icons": false`.

@@ -247,3 +247,29 @@ func TestClassicHelpers(t *testing.T) {
 		t.Fatalf("transpose: %q", got)
 	}
 }
+
+func TestFileHelpers(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "a.txt")
+	_ = os.WriteFile(p, []byte("hi"), 0o644)
+	if got := freeName(p); filepath.Base(got) != "a copy.txt" {
+		t.Fatalf("freeName: %s", got)
+	}
+	_ = os.WriteFile(filepath.Join(dir, "a copy.txt"), nil, 0o644)
+	if got := freeName(p); filepath.Base(got) != "a copy 2.txt" {
+		t.Fatalf("freeName 2: %s", got)
+	}
+	sub := filepath.Join(dir, "sub", "deep")
+	_ = os.MkdirAll(sub, 0o755)
+	_ = os.WriteFile(filepath.Join(sub, "x.go"), []byte("package x"), 0o644)
+	if err := copyPath(filepath.Join(dir, "sub"), filepath.Join(dir, "sub2")); err != nil {
+		t.Fatal(err)
+	}
+	if b, err := os.ReadFile(filepath.Join(dir, "sub2", "deep", "x.go")); err != nil || string(b) != "package x" {
+		t.Fatalf("copyPath: %v %q", err, b)
+	}
+	m := trimSeparators([]menuEntry{menuSep, {label: "A"}, menuSep, menuSep, {label: "B"}, menuSep})
+	if len(m) != 3 || m[0].label != "A" || m[1].label != "" || m[2].label != "B" {
+		t.Fatalf("trimSeparators: %+v", m)
+	}
+}

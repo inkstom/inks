@@ -134,6 +134,15 @@ They're in **Edit › Text Tools**, or type `Text:` in the Command Palette. They
 
 Files and folders show the icons of the File & Folder Icons extension for VS Code (file-icons), colored by type; `"sidebar_icons": false` turns them off. The listing follows the disk: files added, removed or renamed by other programs appear within a couple of seconds.
 
+Right-click a file, a folder, or the space below them for:
+
+- **Open**, Open to the Side, Open in New Window, Open in Default App, Reveal in Finder
+- **Open Terminal Here**, **Open Claude Code Here**, **Open Codex Here**: a new iTerm2 tab (or Terminal, if iTerm2 isn't installed) in that folder, running `claude` or `codex`. Settings: `"terminal_app"` (`"iTerm"` or `"Terminal"`), `"claude_command"`, `"codex_command"`. These are also in Tools and the Command Palette, for the current file's folder.
+- New File…, New Folder…, Rename…, Delete (to the Trash), Cut, Copy, Paste, Duplicate
+- Copy Path, Copy Relative Path, Copy Name, Find in Folder…, Add or Remove Folder from Workspace, Collapse All, Refresh
+
+The first time inks opens a terminal, macOS asks to let it control iTerm2 or Terminal.
+
 ## Git
 
 In a git repository, the gutter marks lines added, changed or deleted since the last commit. The side bar colors files by status (M, A, U, D), and the status bar shows the branch.
@@ -223,7 +232,7 @@ internal/settings/    defaults and the user settings file
 
 ## Testing
 
-`make test` runs `go vet` and the unit tests. `make selftest` opens a window and drives the real app through 56 scripted checks: editing, search and replace, the menu bar, git, builds, layouts, folding, macros, plugins and more. It uses a throwaway profile and exits non-zero on failure.
+`make test` runs `go vet` and the unit tests. `make selftest` opens a window and drives the real app through 57 scripted checks: editing, search and replace, the menu bar, git, builds, layouts, folding, macros, plugins and more. It uses a throwaway profile and exits non-zero on failure.
 
 Useful environment variables:
 

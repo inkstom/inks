@@ -45,9 +45,10 @@ type Shared struct {
 	snippets   []snippet
 	resources  bool // package resources loaded
 
-	pasteHistory []string // recent copies (Paste from History)
-	lastDir      string   // the folder last used in an Open or Save dialog
-	savedSig     string   // what the session file last captured (see loop)
+	pasteHistory []string       // recent copies (Paste from History)
+	fileClip     *fileClipboard // files cut or copied in the side bar
+	lastDir      string         // the folder last used in an Open or Save dialog
+	savedSig     string         // what the session file last captured (see loop)
 
 	// Last copy, so a multi-caret paste can distribute the pieces.
 	clipboardText  string

@@ -268,9 +268,9 @@ func (a *App) tabMenu(d *Doc) {
 	if d.preview {
 		items = append(items, item{"", nil}, item{"Keep Open", func() { d.preview = false }})
 	}
-	labels := make([]string, len(items))
+	labels := make([]macmenu.PopupItem, len(items))
 	for i, it := range items {
-		labels[i] = it.label
+		labels[i] = macmenu.PopupItem{Title: it.label}
 	}
 	macmenu.Popup(labels, func(i int) {
 		if i < 0 || i >= len(items) || items[i].fn == nil {
