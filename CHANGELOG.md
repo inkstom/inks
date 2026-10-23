@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.2.1 — 2026-10-23
 
 - Closing the last tab leaves the window empty, showing a few shortcuts, instead of opening a new untitled tab in its place (which made the tab's × look broken). ⌘W in an empty window closes the window. Opening a folder in a new window no longer adds an untitled tab.
 
