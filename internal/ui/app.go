@@ -460,9 +460,33 @@ func (a *App) drawUI(gtx layout.Context) {
 func (a *App) layoutEditorArea(gtx layout.Context) layout.Dimensions {
 	d := a.doc()
 	if d == nil {
+		a.layoutNoTabs(gtx)
 		return layout.Dimensions{Size: gtx.Constraints.Max}
 	}
 	return a.layoutEditor(gtx, d)
+}
+
+// layoutNoTabs draws an editor area with no tabs: a few ways to go on.
+func (a *App) layoutNoTabs(gtx layout.Context) {
+	size := gtx.Constraints.Max
+	fill(gtx.Ops, image.Rectangle{Max: size}, a.scheme.Bg)
+	px := a.uiPx(gtx)
+	fg := theme.Alpha(a.chrome.TabFg, 0.8)
+	hints := []struct{ label, cmd string }{
+		{"New File", "new_file"},
+		{"Go to File", "show_overlay_goto"},
+		{"Command Palette", "show_overlay_command_palette"},
+		{"Open Folder", "prompt_open_folder"},
+	}
+	lineH := px * 2
+	y := size.Y/2 - len(hints)*lineH/2
+	for _, h := range hints {
+		keys := a.keymap.KeysFor(h.cmd, nil)
+		lw := a.fonts.Width(h.label, a.fonts.UI, px)
+		a.fonts.Draw(gtx.Ops, h.label, size.X/2-gtx.Dp(12)-lw, y, fg, a.fonts.UI, px)
+		a.fonts.Draw(gtx.Ops, keys, size.X/2+gtx.Dp(12), y, fg, a.fonts.UI, px)
+		y += lineH
+	}
 }
 
 func (a *App) updateTitle() {
@@ -775,9 +799,6 @@ func (a *App) closeDoc(i int, then func()) {
 		if a.active >= len(a.docs) {
 			a.active = len(a.docs) - 1
 		}
-		if len(a.allDocs()) == 0 || (len(a.docs) == 0 && len(a.groups) == 1) {
-			a.newDoc("", "")
-		}
 		a.focusEditor = true
 		if then != nil {
 			then()
@@ -968,9 +989,6 @@ func (a *App) restoreFrom(s *session) bool {
 	}
 	f := min(max(s.Focus, 0), len(a.groups)-1)
 	a.focus, a.docs, a.active, a.editorTag = f, a.groups[f].docs, a.groups[f].active, a.groups[f].tag
-	if len(a.docs) == 0 {
-		a.newDoc("", "")
-	}
 	return true
 }
 

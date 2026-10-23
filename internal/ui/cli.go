@@ -81,7 +81,7 @@ func (s *Shared) openRequest(r remote.Request) func() bool {
 		t = s.active()
 	}
 	if t == nil {
-		t = s.NewWindow(nil)
+		t = s.NewWindow(func(*App) {}) // no untitled tab: what's opened fills it
 	}
 	for _, f := range folders {
 		t.addFolder(f.Path)
@@ -166,7 +166,7 @@ func (s *Shared) windowHolding(p string) *App {
 func (s *Shared) emptyWindow() *App {
 	for _, w := range s.windows {
 		docs := w.allDocs()
-		if len(w.folders) == 0 && len(docs) == 1 && docs[0].Path == "" && !docs[0].Dirty() && docs[0].M.Buf.Len() == 0 {
+		if len(w.folders) == 0 && (len(docs) == 0 || len(docs) == 1 && docs[0].Path == "" && !docs[0].Dirty() && docs[0].M.Buf.Len() == 0) {
 			return w
 		}
 	}

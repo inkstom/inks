@@ -813,8 +813,13 @@ func SelfTest(dir string) *TestHooks {
 				d.M.Buf.SetText("") // don't ask about unsaved changes
 				d.markSaved()
 			}
+			// Closing the last tab leaves the window empty, not a new tab.
+			for len(w.docs) > 0 {
+				w.closeDoc(0, nil)
+			}
+			n = len(w.allDocs())
 			w.forceClose()
-			return nil
+			return expect(n == 0, "closing every tab left %d tabs", n)
 		},
 		func(a *App) error {
 			// Menu shortcuts reflect key bindings.

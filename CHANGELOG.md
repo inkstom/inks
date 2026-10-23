@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Closing the last tab leaves the window empty, showing a few shortcuts, instead of opening a new untitled tab in its place (which made the tab's × look broken). ⌘W in an empty window closes the window. Opening a folder in a new window no longer adds an untitled tab.
+
 ## 1.2.0 — 2026-10-23
 
 - **Side bar right-click menus** for files, folders and the empty space: open (to the side, in a new window, in the default app), reveal in Finder, **open a terminal, Claude Code or Codex in that folder** (iTerm2, or Terminal), new file and folder, rename, delete to the Trash, cut/copy/paste and duplicate files, copy path / relative path / name, find in folder, add or remove workspace folders, collapse all and refresh. The terminal commands are also in Tools and the Command Palette.

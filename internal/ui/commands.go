@@ -185,7 +185,13 @@ func (a *App) registerCommands() {
 			}
 		}
 	})
-	reg("close", "File: Close", func(map[string]any) { a.closeDoc(a.active, nil) })
+	reg("close", "File: Close", func(map[string]any) {
+		if a.doc() == nil && len(a.allDocs()) == 0 {
+			a.closeWindow() // nothing left to close: the window, as in Sublime Text
+			return
+		}
+		a.closeDoc(a.active, nil)
+	})
 	reg("close_all", "File: Close All", func(map[string]any) {
 		var next func()
 		next = func() {

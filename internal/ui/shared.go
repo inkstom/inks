@@ -143,9 +143,8 @@ func (s *Shared) NewWindow(setup func(a *App)) *App {
 	}
 	if setup != nil {
 		setup(a)
-	}
-	if len(a.allDocs()) == 0 {
-		a.newDoc("", "")
+	} else {
+		a.newDoc("", "") // a new window starts with an untitled tab
 	}
 	a.focusEditor = true
 	go a.Run()
