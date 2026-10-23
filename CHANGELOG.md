@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.2.0 — 2026-10-23
 
 - **Side bar right-click menus** for files, folders and the empty space: open (to the side, in a new window, in the default app), reveal in Finder, **open a terminal, Claude Code or Codex in that folder** (iTerm2, or Terminal), new file and folder, rename, delete to the Trash, cut/copy/paste and duplicate files, copy path / relative path / name, find in folder, add or remove workspace folders, collapse all and refresh. The terminal commands are also in Tools and the Command Palette.
 - **The `inks` command**, like VS Code's `code`: `inks` opens the current folder in a window, `inks <folder>` opens a folder in its own window, and `inks <files>` opens files in the window whose folder holds them. Options: `-n` (new window), `-a` (add to the active window), `-g file:line:col`, `-w` (wait until closed, for `core.editor`) and `-` (standard input). inks starts if it isn't running. Install it with **Tools › Install 'inks' Command in PATH**.
