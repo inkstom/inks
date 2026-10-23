@@ -125,14 +125,8 @@ func (a *App) treeMenu(r *treeRow) {
 		m = append(m, menuEntry{label: "Remove Folder from Workspace", fn: func() { a.removeFolder(p) }})
 	}
 	m = append(m,
-		menuEntry{label: "Collapse All", fn: func() {
-			for k := range t.expanded {
-				t.expanded[k] = false
-			}
-			for _, f := range a.folders {
-				t.expanded[f] = true
-			}
-		}},
+		menuEntry{label: "Expand All", fn: t.expandAll},
+		menuEntry{label: "Collapse All", fn: t.collapseAll},
 		menuEntry{label: "Refresh", fn: func() { a.run("refresh_folders", nil) }})
 	a.showMenu(trimSeparators(m))
 }

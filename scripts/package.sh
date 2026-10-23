@@ -9,6 +9,8 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp build/inks "$APP/Contents/MacOS/inks"
 cp build-resources/icon.icns "$APP/Contents/Resources/inks.icns"
+mkdir -p "$APP/Contents/Resources/bin"
+cp bin/inks "$APP/Contents/Resources/bin/inks"
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

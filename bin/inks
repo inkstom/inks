@@ -1,15 +1,27 @@
 #!/bin/sh
-# Command line launcher: `inks [files or folders…]`.
-# Opens the paths in the running inks (or starts it). Link it onto your PATH:
+# The inks command: `inks [options] [files or folders…]` (inks --help).
+# Opens the paths in the running inks, starting it if needed; with no paths,
+# the current folder. Install it with Tools › Install 'inks' Command in PATH,
+# or link this file onto your PATH yourself:
 #   ln -s "$PWD/bin/inks" /usr/local/bin/inks
-for app in /Applications/inks.app "$HOME/Applications/inks.app" "$(cd "$(dirname "$0")/.." && pwd)/build/inks.app"; do
-  [ -d "$app" ] && break
+
+# Follow links to find where this script really is.
+p=$0
+while [ -L "$p" ]; do
+  l=$(readlink "$p")
+  case $l in
+    /*) p=$l ;;
+    *) p=$(dirname "$p")/$l ;;
+  esac
 done
-[ -d "$app" ] || { echo "inks.app not found — install it or run make app" >&2; exit 1; }
-case "$1" in
-  -v|--version|-h|--help) exec "$app/Contents/MacOS/inks" "$1" ;;
+here=$(cd "$(dirname "$p")" && pwd)
+
+case $here in
+  */Contents/Resources/bin) app=${here%/Contents/Resources/bin} ;; # inside inks.app
+  *)
+    for app in /Applications/inks.app "$HOME/Applications/inks.app" "$here/../build/inks.app"; do
+      [ -d "$app" ] && break
+    done ;;
 esac
-if [ $# -eq 0 ]; then
-  exec open -a "$app"
-fi
-exec open -a "$app" "$@"
+[ -x "$app/Contents/MacOS/inks" ] || { echo "inks.app not found — install it or run make app" >&2; exit 1; }
+exec "$app/Contents/MacOS/inks" --cli "$@"

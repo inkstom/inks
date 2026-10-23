@@ -332,6 +332,38 @@ func (t *Tree) rows() []treeRow {
 	return out
 }
 
+// collapseAll closes every folder but the top-level ones.
+func (t *Tree) collapseAll() {
+	clear(t.expanded)
+	for _, f := range t.a.folders {
+		t.expanded[f] = true
+	}
+	t.scroll = 0
+}
+
+// maxExpand caps Expand All, so a huge tree doesn't bury the side bar.
+const maxExpand = 500
+
+// expandAll opens every folder (breadth first, up to maxExpand of them).
+func (t *Tree) expandAll() {
+	queue := append([]string(nil), t.a.folders...)
+	n := 0
+	for len(queue) > 0 && n < maxExpand {
+		dir := queue[0]
+		queue = queue[1:]
+		t.expanded[dir] = true
+		n++
+		for _, e := range t.entries(dir) {
+			if isDirEntry(dir, e) {
+				queue = append(queue, filepath.Join(dir, e.Name()))
+			}
+		}
+	}
+	if len(queue) > 0 {
+		t.a.setStatus(fmt.Sprintf("Expanded the first %d folders", maxExpand), 4*time.Second)
+	}
+}
+
 // refresh drops cached listings so the tree re-reads the disk.
 func (t *Tree) refresh() {
 	t.cache = map[string][]os.DirEntry{}
@@ -358,7 +390,37 @@ type sidebarScrollTag struct{}
 
 type sideTabTag struct{ mode string }
 
-var openFolderTag, sidebarCloseTag struct{ _ int }
+var openFolderTag, sidebarCloseTag, collapseAllTag, expandAllTag struct{ _ int }
+
+// treeButton draws a side bar header button, two stacked boxes with a
+// minus (collapse all) or a plus (expand all), and reports a click.
+func (a *App) treeButton(gtx layout.Context, tag event.Tag, r image.Rectangle, tip string, plus bool) bool {
+	c := a.chrome
+	click, hover := a.hit(gtx, tag, r, tip)
+	fg := c.TabFg
+	if hover {
+		fillRound(gtx.Ops, r, gtx.Dp(4), c.SidebarHover)
+		fg = c.TabActiveFg
+	}
+	th := max(1, gtx.Dp(1))
+	size, off := gtx.Dp(10), gtx.Dp(3)
+	cx, cy := (r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2
+	b := image.Rect(cx-(size+off)/2, cy-(size-off)/2, cx-(size+off)/2+size, cy-(size-off)/2+size)
+	fill(gtx.Ops, image.Rect(b.Min.X, b.Min.Y, b.Max.X, b.Min.Y+th), fg)
+	fill(gtx.Ops, image.Rect(b.Min.X, b.Max.Y-th, b.Max.X, b.Max.Y), fg)
+	fill(gtx.Ops, image.Rect(b.Min.X, b.Min.Y, b.Min.X+th, b.Max.Y), fg)
+	fill(gtx.Ops, image.Rect(b.Max.X-th, b.Min.Y, b.Max.X, b.Max.Y), fg)
+	// The box behind: its top and right edges show.
+	fill(gtx.Ops, image.Rect(b.Min.X+off, b.Min.Y-off, b.Max.X+off, b.Min.Y-off+th), fg)
+	fill(gtx.Ops, image.Rect(b.Max.X+off-th, b.Min.Y-off, b.Max.X+off, b.Max.Y-off), fg)
+	arm := gtx.Dp(3)
+	mx, my := (b.Min.X+b.Max.X)/2, (b.Min.Y+b.Max.Y)/2
+	fill(gtx.Ops, image.Rect(mx-arm, my-th/2, mx+arm+th%2, my-th/2+th), fg)
+	if plus {
+		fill(gtx.Ops, image.Rect(mx-th/2, my-arm, mx-th/2+th, my+arm+th%2), fg)
+	}
+	return click
+}
 
 var sideTabTags = [2]sideTabTag{{"folders"}, {"search"}}
 
@@ -407,6 +469,15 @@ func (a *App) layoutSidebar(gtx layout.Context) layout.Dimensions {
 	if a.closeButtonIn(gtx, &sidebarCloseTag, image.Rect(w-gtx.Dp(30), gtx.Dp(3), w-gtx.Dp(8), gtx.Dp(25)), "Hide the side bar (⌘K ⌘B)") {
 		a.setSidebar(false)
 		a.focusEditor = true
+	}
+	// Collapse and expand all, when there's room beside the tabs.
+	if a.sideMode == "folders" && len(a.folders) > 0 && x <= w-gtx.Dp(78) {
+		if a.treeButton(gtx, &collapseAllTag, image.Rect(w-gtx.Dp(54), gtx.Dp(3), w-gtx.Dp(32), gtx.Dp(25)), "Collapse all folders", false) {
+			a.tree.collapseAll()
+		}
+		if a.treeButton(gtx, &expandAllTag, image.Rect(w-gtx.Dp(78), gtx.Dp(3), w-gtx.Dp(56), gtx.Dp(25)), "Expand all folders", true) {
+			a.tree.expandAll()
+		}
 	}
 	defer a.sidebarResizer(gtx, w, h) // on top of the rows
 	if a.sideMode == "search" {
@@ -476,7 +547,7 @@ func (a *App) layoutSidebar(gtx layout.Context) layout.Dimensions {
 		if r.path == t.selected && r.path != active {
 			stroke(gtx.Ops, rr.Inset(1), 0, 1, theme.Alpha(c.Accent, 0.8))
 		}
-		x := gtx.Dp(10) + r.depth*gtx.Dp(14)
+		x := gtx.Dp(10) + r.depth*gtx.Dp(7)
 		base := y + rowH/2 + met.Ascent/2 - gtx.Dp(1)
 		if r.isDir {
 			arrow := "▸"

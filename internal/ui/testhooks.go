@@ -19,6 +19,7 @@ import (
 	"inks/internal/buffer"
 	"inks/internal/linediff"
 	"inks/internal/macmenu"
+	"inks/internal/remote"
 	"inks/internal/settings"
 )
 
@@ -742,6 +743,78 @@ func SelfTest(dir string) *TestHooks {
 			inc := a.search.include.Text()
 			a.sideMode = "folders"
 			return expect(inc == "ops/**", "find in folder include: %q", inc)
+		},
+		func(a *App) error {
+			// Expand and collapse all folders.
+			deep := filepath.Join(dir, "cli", "sub", "deep")
+			_ = os.MkdirAll(deep, 0o755)
+			a.tree.refresh()
+			a.tree.expandAll()
+			if !a.tree.expanded[deep] {
+				return fmt.Errorf("expand all left %s closed", deep)
+			}
+			a.tree.collapseAll()
+			return expect(!a.tree.expanded[deep] && a.tree.expanded[a.folders[0]], "collapse all: %v", a.tree.expanded)
+		},
+		func(a *App) error {
+			// The inks command: folders get their own window (once), files
+			// go to the window whose folder holds them.
+			root := filepath.Join(dir, "cli")
+			file := filepath.Join(root, "sub", "a.txt")
+			_ = os.WriteFile(file, []byte("one\ntwo\nthree\n"), 0o644)
+			n := len(a.windows)
+			folderOpen := a.openRequest(remote.Request{Cwd: root})
+			w := a.windowWithFolder(root)
+			if w == nil || w == a || len(a.windows) != n+1 {
+				return fmt.Errorf("inks with no paths: window %v, %d windows (was %d)", w != nil, len(a.windows), n)
+			}
+			a.openRequest(remote.Request{Cwd: root})
+			if len(a.windows) != n+1 {
+				return fmt.Errorf("inks again opened another window")
+			}
+			fileOpen := a.openRequest(remote.Request{Cwd: dir, Files: []remote.File{{Path: file, Line: 2, Col: 3}}})
+			d := w.doc()
+			if d == nil || d.Path != file || d.M.Sels[0].Head != (buffer.Pos{Line: 1, Col: 2}) {
+				return fmt.Errorf("inks -g file:2:3 opened %v at %v", d != nil && d.Path == file, d.M.Sels)
+			}
+			if !fileOpen() {
+				return fmt.Errorf("--wait: file reported closed while open")
+			}
+			w.closeDoc(w.indexOf(d), nil)
+			if fileOpen() {
+				return fmt.Errorf("--wait: file still reported open after closing")
+			}
+			fresh := filepath.Join(root, "new.txt")
+			a.openRequest(remote.Request{Cwd: root, Files: []remote.File{{Path: fresh}}})
+			if d := w.doc(); d == nil || d.Path != fresh {
+				return fmt.Errorf("inks new.txt didn't open a new file")
+			}
+			if _, err := os.Stat(fresh); err == nil {
+				return fmt.Errorf("inks new.txt wrote the file")
+			}
+			piped := "piped text"
+			a.openRequest(remote.Request{Cwd: root, Stdin: &piped})
+			found := false
+			for _, x := range a.windows {
+				for _, d := range x.allDocs() {
+					if d.M.Buf.Text("\n") == piped {
+						found = true
+						d.markSaved()
+					}
+				}
+			}
+			if !found {
+				return fmt.Errorf("inks - didn't open standard input")
+			}
+			if !folderOpen() {
+				return fmt.Errorf("--wait: folder window reported closed")
+			}
+			for _, d := range w.allDocs() {
+				d.M.Buf.SetText("") // don't ask about unsaved changes
+				d.markSaved()
+			}
+			w.forceClose()
+			return nil
 		},
 		func(a *App) error {
 			// Menu shortcuts reflect key bindings.

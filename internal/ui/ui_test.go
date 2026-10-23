@@ -273,3 +273,23 @@ func TestFileHelpers(t *testing.T) {
 		t.Fatalf("trimSeparators: %+v", m)
 	}
 }
+
+func TestLinkCLI(t *testing.T) {
+	dir := t.TempDir()
+	if err := linkCLI(dir, "/Applications/inks.app/Contents/Resources/bin/inks"); err != nil {
+		t.Fatal(err)
+	}
+	// Replacing an earlier link is fine.
+	if err := linkCLI(dir, "/Other/inks.app/Contents/Resources/bin/inks"); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := os.Readlink(filepath.Join(dir, "inks")); got != "/Other/inks.app/Contents/Resources/bin/inks" {
+		t.Errorf("link points at %q", got)
+	}
+	// A real file named inks is left alone.
+	other := t.TempDir()
+	_ = os.WriteFile(filepath.Join(other, "inks"), []byte("#!/bin/sh\n"), 0o755)
+	if err := linkCLI(other, "/x"); err == nil {
+		t.Error("replaced a file that isn't a link")
+	}
+}

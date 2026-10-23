@@ -122,6 +122,7 @@ func (s *Shared) Start(open []string) *App {
 		s.py.start()
 	}
 	go s.loop()
+	go s.listenCLI()
 	return first
 }
 

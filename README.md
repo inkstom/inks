@@ -12,12 +12,26 @@ inks is signed ad hoc, not by an Apple developer account, so the first launch is
 xattr -dr com.apple.quarantine /Applications/inks.app
 ```
 
-To open files from a terminal, link the launcher onto your PATH:
+### The `inks` command
+
+Like VS Code's `code`, the `inks` command opens files and folders from a terminal. Install it with **Tools › Install 'inks' Command in PATH**. This links `/usr/local/bin/inks`, or `/opt/homebrew/bin/inks` when only that one is writable, and asks for an administrator password only if neither is. The **Shell Command** entries in the Command Palette install or uninstall it.
 
 ```bash
-ln -s "$PWD/bin/inks" /usr/local/bin/inks
-inks main.tf modules/       # files open in tabs, folders in the side bar
+inks                    # this folder in a window (or the window already showing it)
+inks ~/code/site        # a folder: its own window
+inks main.go notes.md   # files: the window whose folder holds them, else the active one
+inks -g main.go:42:7    # open at line 42, column 7
+git log | inks -        # read standard input into a new tab
 ```
+
+| Option | What it does |
+| --- | --- |
+| `-n`, `--new-window` | Open in a new window |
+| `-a`, `--add` | Add the folders to the active window |
+| `-g`, `--goto` | Paths may end in `:line` or `:line:column` |
+| `-w`, `--wait` | Return once the files are closed (for `git config --global core.editor "inks -w"`) |
+
+inks starts if it isn't running. A file that doesn't exist yet opens as a new tab and is created when you save it. For a build from source, link `bin/inks` onto your PATH yourself.
 
 ## Build from source
 
@@ -139,7 +153,9 @@ Right-click a file, a folder, or the space below them for:
 - **Open**, Open to the Side, Open in New Window, Open in Default App, Reveal in Finder
 - **Open Terminal Here**, **Open Claude Code Here**, **Open Codex Here**: a new iTerm2 tab (or Terminal, if iTerm2 isn't installed) in that folder, running `claude` or `codex`. Settings: `"terminal_app"` (`"iTerm"` or `"Terminal"`), `"claude_command"`, `"codex_command"`. These are also in Tools and the Command Palette, for the current file's folder.
 - New File…, New Folder…, Rename…, Delete (to the Trash), Cut, Copy, Paste, Duplicate
-- Copy Path, Copy Relative Path, Copy Name, Find in Folder…, Add or Remove Folder from Workspace, Collapse All, Refresh
+- Copy Path, Copy Relative Path, Copy Name, Find in Folder…, Add or Remove Folder from Workspace, Expand All, Collapse All, Refresh
+
+The buttons beside FOLDERS also expand and collapse every folder. They're also **View: Expand All Folders** and **View: Collapse All Folders** in the Command Palette. Expand All opens at most 500 folders.
 
 The first time inks opens a terminal, macOS asks to let it control iTerm2 or Terminal.
 
@@ -214,7 +230,8 @@ Run it from the console with `view.run_command('insert_date')`, or bind `insert_
 ## Project layout
 
 ```
-cmd/inks/             entry point: window, file-open events
+cmd/inks/             entry point: window, file-open events, the inks command
+internal/remote/      the socket the inks command talks to the app through
 internal/ui/          window, editor view, panels, side bar, commands, menus,
                       builds, git, plugin host bridge, packages
 internal/editor/      selections, motions and editing commands

@@ -18,8 +18,9 @@ const usage = `inks — a fast, keyboard-driven text editor
 
 Usage: inks [file or folder ...]
 
-Files open in tabs and folders in the side bar. To open them in the
-running inks, use the bin/inks launcher or "open -a inks <paths>".
+Files open in tabs and folders in the side bar. This runs inks in the
+foreground; to open paths in the running inks, use the inks command
+(bin/inks, or Tools › Install 'inks' Command; see inks --cli --help).
 
   -h, --help     show this help
   -v, --version  print the version
@@ -27,6 +28,9 @@ running inks, use the bin/inks launcher or "open -a inks <paths>".
 
 func main() {
 	args := os.Args[1:]
+	if len(args) > 0 && args[0] == "--cli" {
+		os.Exit(runCLI(args[1:]))
+	}
 	for _, a := range args {
 		switch a {
 		case "-v", "--version":

@@ -264,6 +264,7 @@ func (a *App) menuSpec() []menuItem {
 			cmdItem("Open Terminal Here", "terminal_here"),
 			cmdItem("Open Claude Code Here", "claude_here"),
 			cmdItem("Open Codex Here", "codex_here"),
+			cmdItem("Install 'inks' Command in PATH", "install_cli"),
 			sep,
 			cmdItem("Build", "build"),
 			cmdItem("Build With…", "build_with"),

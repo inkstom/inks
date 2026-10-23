@@ -418,6 +418,10 @@ func (a *App) registerCommands() {
 		a.fileCache = nil
 		a.refreshGit()
 	})
+	reg("collapse_folders", "View: Collapse All Folders", func(map[string]any) { a.tree.collapseAll() })
+	reg("expand_folders", "View: Expand All Folders", func(map[string]any) { a.tree.expandAll() })
+	reg("install_cli", "Shell Command: Install 'inks' Command in PATH", func(map[string]any) { a.installCLI() })
+	reg("uninstall_cli", "Shell Command: Uninstall 'inks' Command from PATH", func(map[string]any) { a.uninstallCLI() })
 	reg("show_folders", "View: Show Folders", func(map[string]any) {
 		a.sideMode = "folders"
 		a.setSidebar(true)
