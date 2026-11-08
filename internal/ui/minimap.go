@@ -12,6 +12,7 @@ import (
 	"gioui.org/op/clip"
 	"gioui.org/op/paint"
 
+	"inks/internal/buffer"
 	"inks/internal/editor"
 	"inks/internal/theme"
 )
@@ -92,6 +93,22 @@ func (a *App) layoutMinimap(gtx layout.Context, d *Doc, g editorGeom, firstRow, 
 	paint.PaintOp{}.Add(gtx.Ops)
 	off.Pop()
 
+	// Find and selection matches, as marks across the minimap.
+	mark := func(p buffer.Pos, c color.NRGBA) {
+		if row, _ := g.rows.rowOf(p); row >= mFirst && row < mFirst+mapRows {
+			y := (row - mFirst) * rowPx
+			fill(gtx.Ops, image.Rect(x0+1, y, size.X, y+rowPx), c)
+		}
+	}
+	if a.find.visible {
+		for _, mt := range a.find.allMatches(d) {
+			mark(d.M.Buf.PosAt(mt.From), theme.Alpha(s.FindBg, 0.7))
+		}
+	} else if oc := a.selectionMatches(d); oc != nil && len(oc.list) > 1 {
+		for _, o := range oc.list {
+			mark(o.r.Start(), theme.Alpha(theme.Mix(s.Selection, s.Fg, 0.3), 0.8))
+		}
+	}
 	// The visible region.
 	vy := (firstRow - mFirst) * rowPx
 	vh := max(viewRows*rowPx, gtx.Dp(8))

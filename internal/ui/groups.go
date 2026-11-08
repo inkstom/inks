@@ -228,6 +228,19 @@ func (a *App) layoutGroups(gtx layout.Context) layout.Dimensions {
 		}
 	}
 	a.drawGroup = a.focus
+	// The find widget floats over the top right of the focused editor.
+	if a.find.visible && a.focus < len(cells) {
+		r := a.groups[a.focus].rect
+		top := a.tabBarH
+		if a.distractionFree {
+			top = 0
+		}
+		off := op.Offset(image.Pt(r.Min.X, r.Min.Y+top)).Push(gtx.Ops)
+		fg := gtx
+		fg.Constraints = layout.Exact(image.Pt(r.Dx(), max(r.Dy()-top, 0)))
+		a.find.Layout(fg)
+		off.Pop()
+	}
 	if clickFocus >= 0 {
 		a.setFocus(clickFocus)
 	}

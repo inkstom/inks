@@ -694,6 +694,9 @@ func (a *App) layoutStatus(gtx layout.Context) layout.Dimensions {
 		if chars > 0 {
 			left += fmt.Sprintf("; %d characters selected", chars)
 		}
+		if oc := a.selectionMatches(d); oc != nil && oc.status() != "" {
+			left += "; " + oc.status()
+		}
 	}
 	if ps := d.pluginStatus(); ps != "" {
 		left += "    " + ps

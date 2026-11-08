@@ -106,7 +106,17 @@ You never have to save a note to keep it. inks records every window, tab and uns
 
 ## Find and replace
 
-**⌘F** finds in the current file, and **⌥⌘F** replaces. ↩ finds the next match, ⇧↩ the previous one, and ⌥↩ selects every match as a cursor. In the Replace field, ↩ replaces one match and ⌥↩ replaces all of them.
+**⌘F** opens a find box at the top right of the editor, for the current file. Each character you type jumps to the first match, and the box shows where you are ("3 of 12"). ↩ or ↓ goes to the next match, ⇧↩ or ↑ to the previous one, and ⌥↩ or **All** selects every match as a cursor. Esc closes the box.
+
+The arrow at the box's left shows the Replace row, as **⌥⌘F** does. In the Replace field, ↩ replaces one match and ⌥↩ replaces all of them. Every match is also marked in the minimap. To search all the files in a folder, use **⇧⌘F** (see below).
+
+**Selection matches:** select some text and the other places with the same text are marked.
+- Same case: a light fill.
+- Different case: an outline.
+- A selected whole word, for example after a double-click, matches whole words only.
+- Part of a word or a phrase matches anywhere.
+
+The status bar shows the count, for example "5 matches (3 exact)", and the minimap marks the lines. `"highlight_case_insensitive_matches": false` marks exact-case matches only. `"highlight_selection_matches": false` turns the feature off.
 
 Toggles: regex `.*` (⌥⌘R), case `Aa` (⌥⌘C), whole word `ab` (⌥⌘W), structural `{…}` (⌥⌘B), and preserve case `AB` (⌥⌘P).
 

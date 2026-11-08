@@ -33,6 +33,7 @@ type Doc struct {
 	dirty          bool
 	modTime        time.Time
 	hl             *syntax.Highlighter
+	occ            *occCache // the selection's matches (occurrences.go)
 	hlVer          int
 	scrollY        float32
 	scrollX        float32

@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- **Find is a box at the top right of the editor** (⌘F), like VS Code, instead of a panel at the bottom. It searches as you type and shows "3 of 12". Its options sit inside the field, it has up/down arrows for previous and next, and an arrow at its left shows the Replace row (⌥⌘F). Find and selection matches are marked in the minimap. ⇧⌘F still searches across files in the side bar.
+- **Selection matches:** selecting text marks the same text elsewhere in the file. Exact-case matches get a light fill and other-case matches an outline. A selected whole word matches whole words only. The status bar counts them. Settings: `"highlight_selection_matches"`, `"highlight_case_insensitive_matches"`.
+
 ## 1.2.1 — 2026-10-23
 
 - Closing the last tab leaves the window empty, showing a few shortcuts, instead of opening a new untitled tab in its place (which made the tab's × look broken). ⌘W in an empty window closes the window. Opening a folder in a new window no longer adds an untitled tab.

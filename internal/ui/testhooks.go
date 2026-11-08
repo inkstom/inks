@@ -745,6 +745,30 @@ func SelfTest(dir string) *TestHooks {
 			return expect(inc == "ops/**", "find in folder include: %q", inc)
 		},
 		func(a *App) error {
+			// Selection matches: a whole word matches whole words, in any
+			// case; exact-case ones are counted apart.
+			d := a.newDoc("foo Foo foo food\nFOO bar\n", "")
+			d.M.SetSels([]buffer.Range{{Anchor: buffer.Pos{Col: 0}, Head: buffer.Pos{Col: 3}, Goal: -1}}, 0)
+			oc := a.selectionMatches(d)
+			if oc == nil || len(oc.list) != 4 || oc.exact != 2 {
+				return fmt.Errorf("selection matches of foo: %+v", oc)
+			}
+			_ = a.set.Set("highlight_case_insensitive_matches", false)
+			oc = a.selectionMatches(d)
+			_ = a.set.Set("highlight_case_insensitive_matches", true)
+			if oc == nil || len(oc.list) != 2 {
+				return fmt.Errorf("exact-case matches of foo: %+v", oc)
+			}
+			// Part of a word matches anywhere ("oo" in food too).
+			d.M.SetSels([]buffer.Range{{Anchor: buffer.Pos{Col: 1}, Head: buffer.Pos{Col: 3}, Goal: -1}}, 0)
+			if oc = a.selectionMatches(d); oc == nil || len(oc.list) != 5 {
+				return fmt.Errorf("matches of oo: %+v", oc)
+			}
+			d.markSaved()
+			a.closeDoc(a.indexOf(d), nil)
+			return nil
+		},
+		func(a *App) error {
 			// Expand and collapse all folders.
 			deep := filepath.Join(dir, "cli", "sub", "deep")
 			_ = os.MkdirAll(deep, 0o755)
@@ -885,6 +909,19 @@ func snapshotScenes(a *App, base string) {
 		}
 	}
 	shot("editor")
+	// Selection matches: "sels" selected, so "sels" is filled and "Sels"
+	// (another case) outlined.
+	if d != nil {
+		if line := d.M.Buf.Line(47); strings.Contains(line, "(sels") {
+			col := strings.Index(line, "(sels") + 1
+			saved, scroll := d.M.Sels, d.scrollY
+			d.M.SetSels([]buffer.Range{{Anchor: buffer.Pos{Line: 47, Col: col}, Head: buffer.Pos{Line: 47, Col: col + 4}, Goal: -1}}, 0)
+			d.scrollY = float32(30 * 26)
+			shot("matches")
+			d.M.SetSels(saved, 0)
+			d.scrollY = scroll
+		}
+	}
 	if md := a.openPath(repo + "/README.md"); md != nil {
 		for i := 0; i < 50 && md.hl.Version() == 0; i++ {
 			time.Sleep(20 * time.Millisecond)
@@ -898,6 +935,8 @@ func snapshotScenes(a *App, base string) {
 	a.quick.hide()
 	a.find.visible, a.find.replace = true, true
 	a.find.find.SetText("Sels")
+	a.find.origin = 0
+	a.find.searchAsYouType()
 	shot("find")
 	a.find.visible = false
 	a.output.visible = false

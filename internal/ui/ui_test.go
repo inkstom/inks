@@ -293,3 +293,23 @@ func TestLinkCLI(t *testing.T) {
 		t.Error("replaced a file that isn't a link")
 	}
 }
+
+func TestIsWholeWord(t *testing.T) {
+	line := "foo(bar_baz) é_x food"
+	for _, c := range []struct {
+		from, to int
+		want     bool
+	}{
+		{0, 3, true},    // foo
+		{4, 11, true},   // bar_baz
+		{4, 7, false},   // bar, inside bar_baz
+		{3, 4, false},   // "("
+		{13, 17, true},  // é_x
+		{18, 21, false}, // foo, inside food
+		{18, 22, true},  // food
+	} {
+		if got := isWholeWord(line, c.from, c.to); got != c.want {
+			t.Errorf("isWholeWord(%q) = %v", line[c.from:c.to], got)
+		}
+	}
+}

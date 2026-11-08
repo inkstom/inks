@@ -245,6 +245,27 @@ func (a *App) layoutEditor(gtx layout.Context, d *Doc) layout.Dimensions {
 			paint(image.Rect(x0, r.y, x1, r.y+g.lineH), eol)
 		}
 	}
+	// Other places with the selected text: filled when the case matches,
+	// outlined when only the case differs.
+	if oc := a.selectionMatches(d); oc != nil && len(oc.list) > 1 {
+		exactBg := theme.Alpha(s.Selection, 0.5)
+		caseLine := theme.Mix(s.Selection, s.Fg, 0.4)
+		for _, o := range oc.list {
+			if o.r.End().Line < firstLine {
+				continue
+			}
+			if o.r.Start().Line > lastLine {
+				break
+			}
+			rangeOnRows(o.r.Start(), o.r.End(), func(rr image.Rectangle, _ bool) {
+				if o.exact {
+					fillRound(gtx.Ops, rr, gtx.Dp(2), exactBg)
+				} else {
+					stroke(gtx.Ops, rr.Inset(1), gtx.Dp(2), float32(max(1, gtx.Dp(1))), caseLine)
+				}
+			})
+		}
+	}
 	// Selections.
 	for _, sel := range m.Sels {
 		if sel.Empty() {

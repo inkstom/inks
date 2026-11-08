@@ -50,6 +50,10 @@ const DefaultText = `// inks default settings. Put your changes in the User sett
 	"ensure_newline_at_eof_on_save": false,
 	"hot_exit": true,
 	"show_side_bar": true,
+	// Selecting text marks its other matches: filled when the case matches,
+	// outlined when only the case differs (false: exact case only).
+	"highlight_selection_matches": true,
+	"highlight_case_insensitive_matches": true,
 	// File-type icons in the side bar and Search results.
 	"sidebar_icons": true,
 	// Right-click › Open Terminal / Claude Code / Codex Here: the terminal

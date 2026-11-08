@@ -3,12 +3,17 @@ package ui
 import (
 	"fmt"
 	"image"
+	"image/color"
 	"strings"
 	"time"
 
+	"gioui.org/font"
+	"gioui.org/io/event"
 	"gioui.org/io/key"
+	"gioui.org/io/pointer"
 	"gioui.org/layout"
 	"gioui.org/op"
+	"gioui.org/op/clip"
 	"gioui.org/unit"
 	"gioui.org/widget"
 
@@ -29,7 +34,8 @@ var findToggles = []toggleDef{
 	{"preserve", "AB", "Preserve case when replacing (⌥⌘P)"},
 }
 
-// FindPanel is the bottom find / replace panel for the active file.
+// FindPanel is the find / replace widget for the active file, at the top
+// right of the editor.
 type FindPanel struct {
 	a        *App
 	visible  bool
@@ -44,6 +50,8 @@ type FindPanel struct {
 	matchDoc *Doc
 	tags     [16]struct{ i int }
 	hover    string
+	blockTag struct{ _ int }
+	origin   int // where the search started (search as you type)
 }
 
 func newFindPanel(a *App) *FindPanel {
@@ -61,6 +69,7 @@ func (f *FindPanel) show(replace bool) {
 	f.a.input.visible = false
 	if d := f.a.doc(); d != nil {
 		r := d.M.MainSel()
+		f.origin = d.M.Buf.Offset(r.Start())
 		if !r.Empty() && r.Start().Line == r.End().Line {
 			f.find.SetText(d.M.Buf.Slice(r.Start(), r.End()))
 		}
@@ -219,21 +228,49 @@ func (f *FindPanel) replaceAll() {
 	f.a.setStatus(fmt.Sprintf("Replaced %d occurrences — ⌘Z to undo", len(ms)), 0)
 }
 
-// Layout draws the panel.
-func (f *FindPanel) Layout(gtx layout.Context) layout.Dimensions {
+// Layout draws the find widget at the top right of the editor area, whose
+// size is gtx.Constraints.Max: a find field with its options, the match
+// count, previous / next / all and close, and with the arrow at the left
+// expanded, a replace field.
+func (f *FindPanel) Layout(gtx layout.Context) {
 	a := f.a
 	c := a.chrome
+	d := a.doc()
+	if d == nil {
+		return
+	}
 	px := a.uiPx(gtx)
+	small := px - gtx.Dp(1)
 	met := a.fonts.metrics(a.fonts.UI, px)
+	area := gtx.Constraints.Max
 	rowH := gtx.Dp(30)
 	rows := 1
 	if f.replace {
 		rows = 2
 	}
-	w := gtx.Constraints.Max.X
-	h := gtx.Dp(10) + rows*rowH + gtx.Dp(4)
-	fill(gtx.Ops, image.Rect(0, 0, w, h), c.Panel)
-	fill(gtx.Ops, image.Rect(0, 0, w, 1), c.Border)
+	w := min(gtx.Dp(540), area.X-gtx.Dp(28))
+	w = max(w, min(gtx.Dp(380), area.X-gtx.Dp(8)))
+	h := gtx.Dp(6) + rows*rowH + gtx.Dp(2)
+	x0 := area.X - w - gtx.Dp(20)
+	if x0 < gtx.Dp(4) {
+		x0 = gtx.Dp(4)
+	}
+	defer op.Offset(image.Pt(x0, 0)).Push(gtx.Ops).Pop()
+	box := image.Rect(0, 0, w, h)
+	// A soft shadow, then the box; it takes the clicks it covers.
+	for i := 1; i <= 3; i++ {
+		fillRound(gtx.Ops, image.Rect(-i, 0, w+i, h+i+1), gtx.Dp(6)+i, theme.Alpha(theme.Hex("#000000"), 0.07))
+	}
+	fillRound(gtx.Ops, box, gtx.Dp(6), c.Panel)
+	stroke(gtx.Ops, box, gtx.Dp(6), 1, c.Border)
+	blocker := clip.Rect(box).Push(gtx.Ops)
+	event.Op(gtx.Ops, &f.blockTag)
+	blocker.Pop()
+	for {
+		if _, ok := gtx.Event(pointer.Filter{Target: &f.blockTag, Kinds: pointer.Press | pointer.Scroll, ScrollY: pointer.ScrollRange{Min: -1 << 30, Max: 1 << 30}}); !ok {
+			break
+		}
+	}
 
 	// Keys inside the fields.
 	for _, ed := range []*widget.Editor{&f.find, &f.repl} {
@@ -252,126 +289,228 @@ func (f *FindPanel) Layout(gtx layout.Context) layout.Dimensions {
 			switch {
 			case e.Name == key.NameEscape:
 				f.hide()
-				return layout.Dimensions{}
+				return
 			case ed == &f.repl && e.Modifiers.Contain(key.ModAlt):
 				f.replaceAll()
 			case ed == &f.repl:
 				f.replaceNext()
 			case e.Modifiers.Contain(key.ModAlt):
 				f.findAll()
-				return layout.Dimensions{}
+				return
 			default:
 				f.next(!e.Modifiers.Contain(key.ModShift))
 			}
 		}
 		for {
-			if _, ok := ed.Update(gtx); !ok {
+			ev, ok := ed.Update(gtx)
+			if !ok {
 				break
+			}
+			if _, ok := ev.(widget.ChangeEvent); ok && ed == &f.find {
+				f.searchAsYouType()
 			}
 		}
 	}
 
-	// Toggles.
-	x := gtx.Dp(10)
-	y := gtx.Dp(8)
-	for i, t := range findToggles {
-		tw := max(gtx.Dp(28), a.fonts.Width(t.label, a.fonts.Mono, px-gtx.Dp(2))+gtx.Dp(12))
-		r := image.Rect(x, y, x+tw, y+gtx.Dp(24))
-		click, hover := a.hit(gtx, &f.tags[i], r, t.tip)
-		if click {
-			f.opts[t.key] = !f.opts[t.key]
-			if t.key == "regex" && f.opts["regex"] {
-				f.opts["structural"] = false
-			}
-			if t.key == "structural" && f.opts["structural"] {
-				f.opts["regex"] = false
-			}
-		}
+	pad := gtx.Dp(4)
+	iconW := gtx.Dp(24)
+	ctlH := gtx.Dp(24)
+	rowY := func(row int) int { return gtx.Dp(4) + row*rowH + (rowH-ctlH)/2 }
+	// iconButton draws a small button and reports a click.
+	iconButton := func(tag event.Tag, r image.Rectangle, tip string, on, enabled bool, draw func(fg color.NRGBA)) bool {
+		click, hover := a.hit(gtx, tag, r, tip)
 		fg := c.TabFg
 		switch {
-		case f.opts[t.key]:
+		case on:
 			fillRound(gtx.Ops, r, gtx.Dp(4), c.OverlaySel)
 			stroke(gtx.Ops, r, gtx.Dp(4), 1, c.Accent)
 			fg = c.TabActiveFg
-		case hover:
+		case hover && enabled:
 			fillRound(gtx.Ops, r, gtx.Dp(4), c.SidebarHover)
 			fg = c.TabActiveFg
 		}
-		a.fonts.Draw(gtx.Ops, t.label, x+(tw-a.fonts.Width(t.label, a.fonts.Mono, px-gtx.Dp(2)))/2, y+gtx.Dp(17), fg, a.fonts.Mono, px-gtx.Dp(2))
-		x += tw + gtx.Dp(2)
+		if !enabled {
+			fg = theme.Alpha(fg, 0.4)
+		}
+		draw(fg)
+		return click && enabled
 	}
-	labelX := x + gtx.Dp(10)
-	fieldX := labelX + gtx.Dp(62)
-	btnW := gtx.Dp(84)
-	closeW := gtx.Dp(40) // room for the close button at the right edge
-	fieldW := w - fieldX - 3*btnW - 2*gtx.Dp(4) - gtx.Dp(10) - closeW
+	label := func(text string, fnt font.Font) func(r image.Rectangle) func(color.NRGBA) {
+		return func(r image.Rectangle) func(color.NRGBA) {
+			return func(fg color.NRGBA) {
+				lw := a.fonts.Width(text, fnt, small)
+				a.fonts.Draw(gtx.Ops, text, (r.Min.X+r.Max.X-lw)/2, r.Min.Y+(r.Dy()+met.Ascent)/2-gtx.Dp(2), fg, fnt, small)
+			}
+		}
+	}
 
-	field := func(ed *widget.Editor, label string, row int) {
-		ry := y + row*rowH
-		a.fonts.Draw(gtx.Ops, label, labelX, ry+gtx.Dp(17), c.TabFg, a.fonts.UI, px-gtx.Dp(1))
-		r := image.Rect(fieldX, ry, fieldX+fieldW, ry+gtx.Dp(24))
+	// The arrow that shows or hides the replace row.
+	ar := image.Rect(pad, rowY(0), pad+gtx.Dp(18), rowY(rows-1)+ctlH)
+	if iconButton(&f.tags[5], ar, "Toggle Replace (⌥⌘F)", false, true, func(fg color.NRGBA) {
+		dir := byte('r')
+		if f.replace {
+			dir = 'd'
+		}
+		chevron(gtx, (ar.Min.X+ar.Max.X)/2, rowY(0)+ctlH/2, dir, fg)
+	}) {
+		f.replace = !f.replace
+		if f.replace {
+			a.exec(key.FocusCmd{Tag: &f.repl})
+		}
+	}
+
+	// Right of the find field: count, previous, next, all, close.
+	ms := f.allMatches(d)
+	count := ""
+	if f.find.Text() != "" {
+		switch {
+		case !f.matcher().Valid():
+			count = "Invalid"
+		case len(ms) == 0:
+			count = "No results"
+		default:
+			count = fmt.Sprintf("%d matches", len(ms))
+			if i := f.current(d, ms); i >= 0 {
+				count = fmt.Sprintf("%d of %d", i+1, len(ms))
+			}
+		}
+	}
+	countW := gtx.Dp(76)
+	right := w - pad - iconW // close
+	allX := right - gtx.Dp(32)
+	nextX := allX - iconW
+	prevX := nextX - iconW
+	countX := prevX - countW
+	fieldX := ar.Max.X + pad
+	fieldR := countX - pad
+	if a.closeButtonIn(gtx, &f.tags[9], image.Rect(right, rowY(0), right+iconW, rowY(0)+ctlH), "Close (Esc)") {
+		f.hide()
+		return
+	}
+	have := len(ms) > 0
+	y0 := rowY(0)
+	if iconButton(&f.tags[6], image.Rect(prevX, y0, prevX+iconW, y0+ctlH), "Previous match (⇧↩, ⇧⌘G)", false, have, func(fg color.NRGBA) {
+		chevron(gtx, prevX+iconW/2, y0+ctlH/2, 'u', fg)
+	}) {
+		f.next(false)
+	}
+	if iconButton(&f.tags[7], image.Rect(nextX, y0, nextX+iconW, y0+ctlH), "Next match (↩, ⌘G)", false, have, func(fg color.NRGBA) {
+		chevron(gtx, nextX+iconW/2, y0+ctlH/2, 'd', fg)
+	}) {
+		f.next(true)
+	}
+	allR := image.Rect(allX, y0, allX+gtx.Dp(30), y0+ctlH)
+	if iconButton(&f.tags[8], allR, "Select all matches, then type to edit them all (⌥↩)", false, have, label("All", a.fonts.UI)(allR)) {
+		f.findAll()
+		return
+	}
+	cw := a.fonts.Width(count, a.fonts.UI, small)
+	countFg := c.OverlayDim
+	if count == "No results" || count == "Invalid" {
+		countFg = a.scheme.Deleted
+	}
+	a.fonts.Draw(gtx.Ops, count, countX+(countW-cw)/2, y0+(ctlH+met.Ascent)/2-gtx.Dp(2), countFg, a.fonts.UI, small)
+
+	// A text field with option toggles inside its right end.
+	field := func(ed *widget.Editor, row int, hint string, toggles []int) {
+		y := rowY(row)
+		r := image.Rect(fieldX, y, fieldR, y+ctlH)
 		fillRound(gtx.Ops, r, gtx.Dp(4), c.Input)
 		border := c.Border
 		if gtx.Focused(ed) {
 			border = c.Accent
 		}
 		stroke(gtx.Ops, r, gtx.Dp(4), 1, border)
-		off := op.Offset(image.Pt(r.Min.X+gtx.Dp(7), ry+(gtx.Dp(24)-met.Ascent-met.Descent)/2)).Push(gtx.Ops)
+		tx := r.Max.X - gtx.Dp(2)
+		for i := len(toggles) - 1; i >= 0; i-- {
+			t := findToggles[toggles[i]]
+			tw := max(gtx.Dp(22), a.fonts.Width(t.label, a.fonts.Mono, small)+gtx.Dp(8))
+			tr := image.Rect(tx-tw, y+gtx.Dp(2), tx, y+ctlH-gtx.Dp(2))
+			if iconButton(&f.tags[toggles[i]], tr, t.tip, f.opts[t.key], true, label(t.label, a.fonts.Mono)(tr)) {
+				a.toggleFindOption(t.key)
+			}
+			tx -= tw + gtx.Dp(1)
+		}
+		textW := tx - r.Min.X - gtx.Dp(10)
+		if ed.Len() == 0 && !gtx.Focused(ed) {
+			a.fonts.Draw(gtx.Ops, hint, r.Min.X+gtx.Dp(7), y+(ctlH+met.Ascent)/2-gtx.Dp(2), c.OverlayDim, a.fonts.UI, small)
+		}
+		off := op.Offset(image.Pt(r.Min.X+gtx.Dp(7), y+(ctlH-met.Ascent-met.Descent)/2)).Push(gtx.Ops)
 		g := gtx
-		g.Constraints = layout.Exact(image.Pt(r.Dx()-gtx.Dp(14), met.Ascent+met.Descent+gtx.Dp(2)))
+		g.Constraints = layout.Exact(image.Pt(max(textW, 1), met.Ascent+met.Descent+gtx.Dp(2)))
 		ed.Layout(g, a.fonts.Shaper, a.fonts.Mono, unit.Sp(float32(a.fontSize())), colorMaterial(gtx.Ops, a.scheme.Fg), colorMaterial(gtx.Ops, a.scheme.Selection))
 		off.Pop()
 	}
-	field(&f.find, "Find:", 0)
+	field(&f.find, 0, "Find", []int{1, 2, 0, 3}) // Aa, ab, .*, {…}
 	if f.replace {
-		field(&f.repl, "Replace:", 1)
-	}
-	// Match count.
-	if d := a.doc(); d != nil {
-		m := f.matcher()
-		label := ""
-		if f.find.Text() != "" {
-			if !m.Valid() {
-				label = "Invalid"
-			} else {
-				label = fmt.Sprintf("%d matches", len(f.allMatches(d)))
+		field(&f.repl, 1, "Replace", []int{4}) // AB
+		y := rowY(1)
+		rb := func(text, tip string, x int, tag event.Tag, fn func()) int {
+			bw := a.fonts.Width(text, a.fonts.UI, small) + gtx.Dp(14)
+			r := image.Rect(x, y, x+bw, y+ctlH)
+			if iconButton(tag, r, tip, false, have, label(text, a.fonts.UI)(r)) {
+				fn()
 			}
+			return x + bw + gtx.Dp(3)
 		}
-		lw := a.fonts.Width(label, a.fonts.UI, px-gtx.Dp(2))
-		a.fonts.Draw(gtx.Ops, label, fieldX+fieldW-lw-gtx.Dp(8), y+gtx.Dp(17), c.OverlayDim, a.fonts.UI, px-gtx.Dp(2))
+		x := rb("Replace", "Replace this match and find the next (↩ in Replace)", countX, &f.tags[10], f.replaceNext)
+		rb("All", "Replace every match (⌥↩ in Replace); ⌘Z undoes it", x, &f.tags[11], f.replaceAll)
 	}
-	// Buttons.
-	button := func(label, tip string, i, row, col int, fn func()) {
-		bx := fieldX + fieldW + gtx.Dp(10) + col*(btnW+gtx.Dp(4))
-		r := image.Rect(bx, y+row*rowH, bx+btnW, y+row*rowH+gtx.Dp(24))
-		click, hover := a.hit(gtx, &f.tags[i], r, tip)
-		bg := c.OverlaySel
-		if i == 8 {
-			bg = c.Accent
+}
+
+// chevron draws a small arrow centred on cx, cy pointing dir: 'u', 'd' or
+// 'r'.
+func chevron(gtx layout.Context, cx, cy int, dir byte, fg color.NRGBA) {
+	arm := gtx.Dp(4)
+	th := max(1, gtx.Dp(1.5))
+	for i := -arm; i <= arm; i++ {
+		k := arm/2 - abs(i)
+		switch dir {
+		case 'd':
+			fill(gtx.Ops, image.Rect(cx+i, cy+k, cx+i+th, cy+k+th), fg)
+		case 'u':
+			fill(gtx.Ops, image.Rect(cx+i, cy-k, cx+i+th, cy-k+th), fg)
+		case 'r':
+			fill(gtx.Ops, image.Rect(cx+k, cy+i, cx+k+th, cy+i+th), fg)
 		}
-		if hover {
-			bg = theme.Mix(bg, c.TabActiveFg, 0.12)
+	}
+}
+
+// current returns the index of the match the main selection is on, or -1.
+func (f *FindPanel) current(d *Doc, ms []search.Match) int {
+	sel := d.M.MainSel()
+	from, to := d.M.Buf.Offset(sel.Start()), d.M.Buf.Offset(sel.End())
+	for i, m := range ms {
+		if m.From == from && m.To == to {
+			return i
 		}
-		fillRound(gtx.Ops, r, gtx.Dp(4), bg)
-		lw := a.fonts.Width(label, a.fonts.UI, px-gtx.Dp(1))
-		a.fonts.Draw(gtx.Ops, label, bx+(btnW-lw)/2, r.Min.Y+gtx.Dp(17), c.TabActiveFg, a.fonts.UI, px-gtx.Dp(1))
-		if click {
-			fn()
+		if m.From > to {
+			break
 		}
 	}
-	button("Find", "Find the next match (↩, ⌘G)", 8, 0, 0, func() { f.next(true) })
-	button("Find Prev", "Find the previous match (⇧↩, ⇧⌘G)", 9, 0, 1, func() { f.next(false) })
-	button("Find All", "Select every match as a cursor, then type to edit them all (⌥↩)", 10, 0, 2, f.findAll)
-	if f.replace {
-		button("Replace", "Replace this match and find the next (↩ in the Replace field)", 11, 1, 0, f.replaceNext)
-		button("Replace All", "Replace every match (⌥↩ in the Replace field); ⌘Z undoes it", 12, 1, 1, f.replaceAll)
+	return -1
+}
+
+// searchAsYouType selects the first match at or after where the search
+// started, as the find text changes.
+func (f *FindPanel) searchAsYouType() {
+	d := f.a.doc()
+	if d == nil || f.find.Text() == "" {
+		return
 	}
-	// Close button.
-	if a.closeButton(gtx, &f.tags[14], w, "Close the find panel (Esc)") {
-		f.hide()
-		return layout.Dimensions{Size: image.Pt(w, h)}
+	ms := f.allMatches(d)
+	if len(ms) == 0 {
+		return
 	}
-	return layout.Dimensions{Size: image.Pt(w, h)}
+	pick := 0
+	for i, m := range ms {
+		if m.From >= f.origin {
+			pick = i
+			break
+		}
+	}
+	d.M.SetSels([]buffer.Range{f.toRange(d, ms[pick])}, 0)
+	d.reveal = true
 }
 
 // ---------------------------------------------------------------------------

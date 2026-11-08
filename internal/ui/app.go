@@ -436,10 +436,7 @@ func (a *App) drawUI(gtx layout.Context) {
 			return a.output.Layout(gtx)
 		}),
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-			switch {
-			case a.find.visible:
-				return a.find.Layout(gtx)
-			case a.input.visible:
+			if a.input.visible {
 				return a.input.Layout(gtx)
 			}
 			return layout.Dimensions{}
