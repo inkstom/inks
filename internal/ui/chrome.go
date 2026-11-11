@@ -386,8 +386,6 @@ func (t *Tree) checkStale() bool {
 	return changed
 }
 
-type sidebarScrollTag struct{}
-
 type sideTabTag struct{ mode string }
 
 var openFolderTag, sidebarCloseTag, collapseAllTag, expandAllTag struct{ _ int }
@@ -508,29 +506,31 @@ func (a *App) layoutSidebar(gtx layout.Context) layout.Dimensions {
 	if len(t.rowTags) < len(rows) {
 		t.rowTags = make([]rowTag, len(rows)+64)
 	}
-	// Scrolling.
-	area := clip.Rect{Min: image.Pt(0, top), Max: image.Pt(w, h)}.Push(gtx.Ops)
+	// Scrolling: the scroll area encloses the rows, so scrolling over a row
+	// reaches it (the rows only take clicks).
+	listArea := clip.Rect{Min: image.Pt(0, top), Max: image.Pt(w, h)}.Push(gtx.Ops)
 	event.Op(gtx.Ops, &a.sidebarScroll)
-	area.Pop()
 	for {
-		ev, ok := gtx.Event(pointer.Filter{Target: &a.sidebarScroll, Kinds: pointer.Scroll | pointer.Press, ScrollY: pointer.ScrollRange{Min: -1 << 30, Max: 1 << 30}})
+		ev, ok := gtx.Event(pointer.Filter{Target: &a.sidebarScroll, Kinds: pointer.Scroll, ScrollY: pointer.ScrollRange{Min: -1 << 30, Max: 1 << 30}})
 		if !ok {
 			break
 		}
-		if e, ok := ev.(pointer.Event); ok {
-			switch {
-			case e.Kind == pointer.Scroll:
-				t.scroll += int(e.Scroll.Y)
-			case e.Buttons == pointer.ButtonSecondary:
-				// Right-click below the rows: the folder's menu.
-				t.selected = ""
-				a.treeMenu(nil)
-			}
+		if e, ok := ev.(pointer.Event); ok && e.Kind == pointer.Scroll {
+			t.scroll += int(e.Scroll.Y)
 		}
 	}
-	maxScroll := max(0, len(rows)*rowH-(h-top))
+	// Right-click below the rows (the rows cover this layer): the folder's
+	// menu.
+	bg := clip.Rect{Min: image.Pt(0, top), Max: image.Pt(w, h)}.Push(gtx.Ops)
+	event.Op(gtx.Ops, &a.sidebarBg)
+	bg.Pop()
+	if e, ok := clicked(gtx, &a.sidebarBg); ok && e.Buttons == pointer.ButtonSecondary {
+		t.selected = ""
+		a.treeMenu(nil)
+	}
+	viewH := h - top
+	maxScroll := max(0, len(rows)*rowH-viewH)
 	t.scroll = min(max(t.scroll, 0), maxScroll)
-	clipRows := clip.Rect{Min: image.Pt(0, top), Max: image.Pt(w, h)}.Push(gtx.Ops)
 	active := ""
 	if d := a.doc(); d != nil {
 		active = d.Path
@@ -618,7 +618,13 @@ func (a *App) layoutSidebar(gtx layout.Context) layout.Dimensions {
 			}
 		}
 	}
-	clipRows.Pop()
+	// A scroll bar thumb when the rows don't fit.
+	if maxScroll > 0 {
+		thumbH := max(viewH*viewH/(len(rows)*rowH), gtx.Dp(24))
+		ty := top + (viewH-thumbH)*t.scroll/maxScroll
+		fillRound(gtx.Ops, image.Rect(w-gtx.Dp(8), ty, w-gtx.Dp(4), ty+thumbH), gtx.Dp(2), theme.Alpha(c.SidebarFg, 0.25))
+	}
+	listArea.Pop()
 	return layout.Dimensions{Size: image.Pt(w, h)}
 }
 

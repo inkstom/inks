@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Fixed: the side bar's file list didn't scroll when the pointer was over the files (only over the empty space below them, which a long list doesn't have). A scroll bar thumb now shows when the list is longer than the side bar.
+
 ## 1.3.0 — 2026-11-07
 
 - **Find is a box at the top right of the editor** (⌘F), like VS Code, instead of a panel at the bottom. It searches as you type and shows "3 of 12". Its options sit inside the field, it has up/down arrows for previous and next, and an arrow at its left shows the Replace row (⌥⌘F). Find and selection matches are marked in the minimap. ⇧⌘F still searches across files in the side bar.

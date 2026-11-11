@@ -123,6 +123,7 @@ type App struct {
 	// Click targets (stable addresses so Gio can route pointer events).
 	statusTags    [4]statusTag
 	sidebarScroll struct{ _ int }
+	sidebarBg     struct{ _ int }
 }
 
 type editorTagT struct{}

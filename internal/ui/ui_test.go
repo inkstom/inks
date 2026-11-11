@@ -1,14 +1,22 @@
 package ui
 
 import (
+	"fmt"
+	"image"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"gioui.org/app"
-
+	"gioui.org/f32"
+	"gioui.org/io/input"
 	"gioui.org/io/key"
+	"gioui.org/io/pointer"
+	"gioui.org/layout"
+	"gioui.org/op"
+	"gioui.org/unit"
 
 	"inks/internal/buffer"
 	"inks/internal/editor"
@@ -311,5 +319,30 @@ func TestIsWholeWord(t *testing.T) {
 		if got := isWholeWord(line, c.from, c.to); got != c.want {
 			t.Errorf("isWholeWord(%q) = %v", line[c.from:c.to], got)
 		}
+	}
+}
+
+// Scrolling with the pointer over the side bar's rows scrolls the list (the
+// rows' click areas used to swallow it).
+func TestSidebarScrollOverRows(t *testing.T) {
+	t.Setenv("INKS_USER_DATA", t.TempDir())
+	dir := t.TempDir()
+	for i := range 40 {
+		_ = os.WriteFile(filepath.Join(dir, fmt.Sprintf("file%02d.txt", i)), nil, 0o644)
+	}
+	a := newApp(NewShared(), new(app.Window))
+	a.addFolder(dir)
+	var r input.Router
+	gtx := layout.Context{Ops: new(op.Ops), Source: r.Source(), Metric: unit.Metric{PxPerDp: 1, PxPerSp: 1}, Now: time.Now(), Constraints: layout.Exact(image.Pt(260, 300))}
+	frame := func() {
+		gtx.Ops.Reset()
+		a.layoutSidebar(gtx)
+		r.Frame(gtx.Ops)
+	}
+	frame()
+	r.Queue(pointer.Event{Kind: pointer.Scroll, Source: pointer.Mouse, Position: f32.Pt(80, 150), Scroll: f32.Pt(0, 60)})
+	frame()
+	if a.tree.scroll <= 0 {
+		t.Fatalf("scrolling over the rows left the side bar at %d", a.tree.scroll)
 	}
 }
