@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.3.1 — 2026-11-11
 
 - Fixed: the side bar's file list didn't scroll when the pointer was over the files (only over the empty space below them, which a long list doesn't have). A scroll bar thumb now shows when the list is longer than the side bar.
 
